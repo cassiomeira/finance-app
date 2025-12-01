@@ -11,6 +11,8 @@ services:
         sync: false
       - key: VITE_SUPABASE_URL
         sync: false
+      - key: VITE_GEMINI_API_KEY
+        sync: false
     routes:
       - type: rewrite
         source: /*
