@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Transaction, TransactionType, PaymentMethod } from '@/types/finance';
+import { Transaction, TransactionType, PaymentMethod, Frequency } from '@/types/finance';
 import { toast } from 'sonner';
 
 interface CreateTransactionInput {
@@ -13,7 +13,8 @@ interface CreateTransactionInput {
   payment_method: PaymentMethod;
   card_id?: string;
   is_recurring?: boolean;
-  recurring_frequency?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurring_frequency?: Frequency;
+  recurring_end_date?: string;
 }
 
 export function useTransactions(month?: number, year?: number) {
@@ -40,9 +41,9 @@ export function useTransactions(month?: number, year?: number) {
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: false });
-      
+
       if (error) throw error;
-      
+
       return (data || []).map(t => ({
         ...t,
         type: t.type as TransactionType,
@@ -59,15 +60,43 @@ export function useTransactions(month?: number, year?: number) {
   const createTransaction = useMutation({
     mutationFn: async (input: CreateTransactionInput) => {
       if (!user?.id) throw new Error('No user');
-      
+
+      // 1. Criar a transação normal (registro atual)
       const { error } = await supabase
         .from('transactions')
         .insert({
-          ...input,
+          type: input.type,
+          category_id: input.category_id,
+          amount: input.amount,
+          description: input.description,
+          date: input.date,
+          payment_method: input.payment_method,
+          card_id: input.card_id,
           user_id: user.id,
         });
-      
+
       if (error) throw error;
+
+      // 2. Se for recorrente, criar na tabela de recorrência
+      if (input.is_recurring && input.recurring_frequency) {
+        // Usando any para evitar erro de tipagem enquanto não atualizamos os types do Supabase
+        const { error: recurringError } = await (supabase
+          .from('recurring_transactions' as any) as any)
+          .insert({
+            user_id: user.id,
+            description: input.description || 'Sem descrição',
+            amount: input.amount,
+            type: input.type,
+            category_id: input.category_id,
+            payment_method: input.payment_method,
+            frequency: input.recurring_frequency,
+            start_date: input.date,
+            end_date: input.recurring_end_date || null,
+            active: true
+          });
+
+        if (recurringError) throw recurringError;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });

@@ -3,17 +3,17 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
-  ArrowRightLeft,
+  Receipt,
   CreditCard,
-  Target,
   Settings,
   LogOut,
   Menu,
   X,
+  Banknote,
+  Target,
   Crown,
   Wallet,
-  User,
-  Banknote,
+  BarChart3
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -25,9 +25,10 @@ interface AppLayoutProps {
 
 const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/transactions', icon: ArrowRightLeft, label: 'Lançamentos' },
+  { path: '/transactions', icon: Receipt, label: 'Lançamentos' },
   { path: '/cards', icon: CreditCard, label: 'Cartões' },
   { path: '/goals', icon: Target, label: 'Metas' },
+  { path: '/reports', icon: BarChart3, label: 'Relatórios' },
   { path: '/loans', icon: Banknote, label: 'Empréstimos' },
   { path: '/settings', icon: Settings, label: 'Configurações' },
 ];

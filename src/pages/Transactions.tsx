@@ -1,20 +1,39 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TransactionList } from '@/components/transactions/TransactionList';
 import { TransactionForm } from '@/components/transactions/TransactionForm';
 import { useTransactions } from '@/hooks/useTransactions';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function Transactions() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
-  const { transactions, deleteTransaction, isLoading } = useTransactions();
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  const month = selectedMonth.getMonth() + 1;
+  const year = selectedMonth.getFullYear();
+
+  const { transactions, deleteTransaction, isLoading } = useTransactions(month, year);
 
   const filteredTransactions = transactions.filter(t =>
     t.description?.toLowerCase().includes(search.toLowerCase()) ||
     t.category?.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setSelectedMonth(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'prev') {
+        newDate.setMonth(newDate.getMonth() - 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  };
 
   return (
     <AppLayout>
@@ -24,10 +43,29 @@ export default function Transactions() {
             <h1 className="text-2xl lg:text-3xl font-display font-bold">Lançamentos</h1>
             <p className="text-muted-foreground">Gerencie suas receitas e despesas</p>
           </div>
-          <button onClick={() => setShowForm(true)} className="btn-finance-primary">
-            <Plus size={20} />
-            Novo Lançamento
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-card rounded-xl p-2 border border-border">
+              <button
+                onClick={() => navigateMonth('prev')}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="font-medium min-w-[120px] text-center capitalize">
+                {format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR })}
+              </span>
+              <button
+                onClick={() => navigateMonth('next')}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+            <button onClick={() => setShowForm(true)} className="btn-finance-primary">
+              <Plus size={20} />
+              <span className="hidden sm:inline">Novo Lançamento</span>
+            </button>
+          </div>
         </div>
 
         <div className="relative">

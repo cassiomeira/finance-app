@@ -1,5 +1,5 @@
-import { Loan, LoanInstallment, InterestType, InterestPeriod } from '../types/loan';
-import { addMonths } from 'date-fns';
+import { LoanInstallment, InterestType, InterestPeriod, Loan } from '../types/loan';
+import { addMonths, differenceInDays, differenceInMonths } from 'date-fns';
 
 export const calculateLoan = (
     principal: number,
@@ -93,36 +93,73 @@ export const calculateLoan = (
         monthlyPayment,
         installments
     };
-    while (simulationDate < endDate) {
-        // Avançar um dia
-        simulationDate = new Date(simulationDate.getTime() + oneDay);
+};
 
-        // Calcular juros do dia sobre o saldo anterior
-        const dailyInterest = currentBalance * dailyRate;
+export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date()) => {
+    // Converter taxa anual para mensal se necessário
+    let monthlyRate = loan.interestPeriod === 'yearly'
+        ? Math.pow(1 + loan.interestRate / 100, 1 / 12) - 1
+        : loan.interestRate / 100;
 
-        // Adicionar juros ao saldo (Juros Compostos Diários)
+    // Calcular juros diários compostos desde o início até hoje
+    // Fórmula: M = P * (1 + i)^n
+    // Onde n é o número de meses (ou fração de meses)
 
-        if (currentBalance > 0) {
-            currentBalance += dailyInterest;
-            totalInterestAccrued += dailyInterest;
-        }
+    // Abordagem simplificada: Calcular saldo dia a dia considerando pagamentos
+    // Isso é mais preciso para amortizações irregulares
 
-        // Verificar se houve pagamento neste dia
-        const paymentsToday = sortedPayments.filter(p => {
-            const pDate = new Date(p.date);
-            pDate.setHours(0, 0, 0, 0);
-            return pDate.getTime() === simulationDate.getTime();
-        });
+    let balance = loan.principalAmount;
+    let lastDate = new Date(loan.startDate);
 
-        paymentsToday.forEach(payment => {
-            currentBalance -= payment.amount;
-        });
+    // Validar data
+    if (isNaN(lastDate.getTime())) {
+        lastDate = new Date();
+    }
 
-        if (currentBalance < 0) currentBalance = 0;
+    // Ordenar pagamentos por data
+    const sortedPayments = [...(loan.payments || [])].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let totalPaid = 0;
+    let accumulatedInterest = 0;
+
+    // Função auxiliar para adicionar juros entre duas datas
+    const addInterest = (from: Date, to: Date, currentBalance: number) => {
+        if (currentBalance <= 0) return 0;
+        const days = differenceInDays(to, from);
+        if (days <= 0) return 0;
+
+        // Taxa diária equivalente
+        const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
+        const interest = currentBalance * (Math.pow(1 + dailyRate, days) - 1);
+        return interest;
+    };
+
+    // Processar pagamentos
+    for (const payment of sortedPayments) {
+        if (payment.date > currentDate) break; // Pagamentos futuros não contam ainda
+
+        // Adicionar juros do período anterior até este pagamento
+        const interest = addInterest(lastDate, payment.date, balance);
+        balance += interest;
+        accumulatedInterest += interest;
+
+        // Abater pagamento
+        balance -= payment.amount;
+        totalPaid += payment.amount;
+
+        lastDate = payment.date;
+    }
+
+    // Adicionar juros do último pagamento até hoje
+    if (currentDate > lastDate) {
+        const interest = addInterest(lastDate, currentDate, balance);
+        balance += interest;
+        accumulatedInterest += interest;
     }
 
     return {
-        currentBalance,
-        totalInterestAccrued
+        currentBalance: Math.max(0, balance),
+        totalPaid,
+        accumulatedInterest
     };
 };

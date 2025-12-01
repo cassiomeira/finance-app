@@ -367,3 +367,83 @@
 .stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
 .stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
 .stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+
+/* Print Styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 20mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide UI elements */
+  aside, 
+  header, 
+  button, 
+  .no-print,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Layout adjustments */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .card-finance {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    break-inside: avoid;
+    margin-bottom: 20px;
+  }
+
+  /* Typography for print */
+  h1, h2, h3 {
+    color: black !important;
+  }
+
+  p, span, div {
+    color: #333 !important;
+  }
+
+  /* Ensure charts are visible */
+  canvas, svg {
+    max-width: 100% !important;
+    break-inside: avoid;
+  }
+
+  /* Grid adjustments */
+  .grid {
+    display: block !important;
+  }
+  
+  .grid > * {
+    margin-bottom: 20px;
+  }
+
+  /* Custom print header */
+  .print-header {
+    display: block !important;
+    margin-bottom: 30px;
+    text-align: center;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 20px;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}
+
+.print-only {
+  display: none;
+}

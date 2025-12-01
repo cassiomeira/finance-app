@@ -24,9 +24,14 @@ export function useCreditCards() {
         .select('*')
         .eq('user_id', user?.id)
         .order('name');
-      
+
       if (error) throw error;
-      return (data || []) as CreditCard[];
+
+      // Mapear limit_amount (banco) para card_limit (frontend)
+      return (data || []).map((card: any) => ({
+        ...card,
+        card_limit: card.limit_amount || card.card_limit || 0
+      })) as CreditCard[];
     },
     enabled: !!user?.id,
   });
@@ -34,14 +39,18 @@ export function useCreditCards() {
   const createCard = useMutation({
     mutationFn: async (input: CreateCardInput) => {
       if (!user?.id) throw new Error('No user');
-      
+
       const { error } = await supabase
         .from('credit_cards')
         .insert({
-          ...input,
+          name: input.name,
+          limit_amount: input.card_limit, // Banco usa 'limit_amount'
+          closing_day: input.closing_day,
+          due_day: input.due_day,
+          color: input.color || '#10B981', // Cor padrão (Emerald-500) se não fornecida
           user_id: user.id,
-        });
-      
+        } as any);
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -86,7 +95,7 @@ export function useCardInvoices(cardId?: string) {
         .eq('card_id', cardId)
         .order('year', { ascending: false })
         .order('month', { ascending: false });
-      
+
       if (error) throw error;
       return (data || []) as CardInvoice[];
     },

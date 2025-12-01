@@ -16,6 +16,8 @@ import { ExpenseChart } from '@/components/dashboard/ExpenseChart';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { TransactionList } from '@/components/transactions/TransactionList';
 import { TransactionForm } from '@/components/transactions/TransactionForm';
+import { MagicInput } from '@/components/transactions/MagicInput';
+import { FinancialAdvisor } from '@/components/dashboard/FinancialAdvisor';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCreditCards } from '@/hooks/useCreditCards';
 import { useSpendingGoals } from '@/hooks/useSpendingGoals';
@@ -25,6 +27,7 @@ import { ptBR } from 'date-fns/locale';
 
 export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
+  const [initialFormData, setInitialFormData] = useState<any>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
   const month = selectedMonth.getMonth() + 1;
@@ -32,13 +35,15 @@ export default function Dashboard() {
 
   const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions(month, year);
   const { cards } = useCreditCards();
-  const { globalGoal } = useSpendingGoals(month, year);
+  const { goals } = useSpendingGoals();
+  // Find global goal or sum of category goals for demo
+  const globalGoal = goals.find(g => g.is_global) || { amount: goals.reduce((acc, g) => acc + Number(g.amount), 0) };
   const { isPremium } = useProfile();
 
   // Calculate expenses by category
   const expensesByCategory = useMemo(() => {
     const categoryMap = new Map<string, { amount: number; color: string; icon: string }>();
-    
+
     transactions
       .filter(t => t.type === 'expense')
       .forEach(t => {
@@ -70,7 +75,7 @@ export default function Dashboard() {
 
   // Check if over budget
   const isOverBudget = globalGoal && totalExpense > Number(globalGoal.amount);
-  const budgetPercentage = globalGoal 
+  const budgetPercentage = globalGoal
     ? Math.min((totalExpense / Number(globalGoal.amount)) * 100, 100)
     : 0;
 
@@ -88,6 +93,16 @@ export default function Dashboard() {
       }
       return newDate;
     });
+  };
+
+  const handleMagicTransaction = (data: any) => {
+    setInitialFormData(data);
+    setShowForm(true);
+  };
+
+  const handleOpenNewTransaction = () => {
+    setInitialFormData(null);
+    setShowForm(true);
   };
 
   return (
@@ -118,8 +133,12 @@ export default function Dashboard() {
                 <ChevronRight size={18} />
               </button>
             </div>
+
+            <FinancialAdvisor />
+            <MagicInput onTransactionGenerated={handleMagicTransaction} />
+
             <button
-              onClick={() => setShowForm(true)}
+              onClick={handleOpenNewTransaction}
               className="btn-finance-primary"
             >
               <Plus size={20} />
@@ -196,13 +215,12 @@ export default function Dashboard() {
                 initial={{ width: 0 }}
                 animate={{ width: `${budgetPercentage}%` }}
                 transition={{ duration: 0.8, delay: 0.5 }}
-                className={`h-full rounded-full ${
-                  budgetPercentage >= 100
-                    ? 'bg-destructive'
-                    : budgetPercentage >= 80
+                className={`h-full rounded-full ${budgetPercentage >= 100
+                  ? 'bg-destructive'
+                  : budgetPercentage >= 80
                     ? 'bg-warning'
                     : 'gradient-primary'
-                }`}
+                  }`}
               />
             </div>
             <p className="text-sm text-muted-foreground mt-2">
@@ -253,7 +271,7 @@ export default function Dashboard() {
 
       {/* Transaction Form Modal */}
       <AnimatePresence>
-        {showForm && <TransactionForm onClose={() => setShowForm(false)} />}
+        {showForm && <TransactionForm onClose={() => setShowForm(false)} initialData={initialFormData} />}
       </AnimatePresence>
     </AppLayout>
   );

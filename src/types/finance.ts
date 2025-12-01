@@ -1,6 +1,35 @@
 export type TransactionType = 'income' | 'expense';
 export type SubscriptionStatus = 'free' | 'premium' | 'cancelled';
 export type PaymentMethod = 'cash' | 'debit' | 'credit' | 'pix' | 'transfer';
+export type Frequency = 'weekly' | 'monthly' | 'yearly';
+
+export interface RecurringTransaction {
+  id: string;
+  user_id: string;
+  description: string;
+  amount: number;
+  type: TransactionType;
+  category_id: string | null;
+  payment_method: PaymentMethod;
+  frequency: Frequency;
+  start_date: string;
+  end_date: string | null;
+  last_processed_date: string | null;
+  active: boolean;
+  created_at: string;
+  category?: Category;
+}
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  category_id: string;
+  amount: number;
+  month: number;
+  year: number;
+  created_at: string;
+  category?: Category;
+}
 
 export interface Profile {
   id: string;

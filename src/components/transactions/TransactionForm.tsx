@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X, TrendingUp, TrendingDown } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
@@ -6,13 +6,22 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useCreditCards } from '@/hooks/useCreditCards';
 import { useProfile } from '@/hooks/useProfile';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
-import { TransactionType, PaymentMethod } from '@/types/finance';
+import { TransactionType, PaymentMethod, Frequency } from '@/types/finance';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface TransactionFormProps {
   onClose: () => void;
   defaultType?: TransactionType;
+  initialData?: {
+    amount?: number;
+    description?: string;
+    date?: string;
+    category_id?: string;
+    type?: TransactionType;
+  };
 }
 
 const paymentMethods: { value: PaymentMethod; label: string }[] = [
@@ -23,14 +32,30 @@ const paymentMethods: { value: PaymentMethod; label: string }[] = [
   { value: 'transfer', label: 'Transferência' },
 ];
 
-export function TransactionForm({ onClose, defaultType = 'expense' }: TransactionFormProps) {
-  const [type, setType] = useState<TransactionType>(defaultType);
-  const [categoryId, setCategoryId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+export function TransactionForm({ onClose, defaultType = 'expense', initialData }: TransactionFormProps) {
+  const [type, setType] = useState<TransactionType>(initialData?.type || defaultType);
+  const [categoryId, setCategoryId] = useState(initialData?.category_id || '');
+  const [amount, setAmount] = useState(initialData?.amount?.toString() || '');
+  const [description, setDescription] = useState(initialData?.description || '');
+  const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [cardId, setCardId] = useState('');
+
+  // Update form when initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setType(initialData.type || defaultType);
+      setCategoryId(initialData.category_id || '');
+      setAmount(initialData.amount?.toString() || '');
+      setDescription(initialData.description || '');
+      setDate(initialData.date || new Date().toISOString().split('T')[0]);
+    }
+  }, [initialData, defaultType]);
+
+  // Recurring state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<Frequency>('monthly');
+  const [endDate, setEndDate] = useState('');
 
   const { incomeCategories, expenseCategories } = useCategories();
   const { createTransaction } = useTransactions();
@@ -60,6 +85,9 @@ export function TransactionForm({ onClose, defaultType = 'expense' }: Transactio
       date,
       payment_method: paymentMethod,
       card_id: paymentMethod === 'credit' && cardId ? cardId : undefined,
+      is_recurring: isRecurring,
+      recurring_frequency: isRecurring ? frequency : undefined,
+      recurring_end_date: isRecurring && endDate ? endDate : undefined,
     });
 
     onClose();
@@ -191,6 +219,50 @@ export function TransactionForm({ onClose, defaultType = 'expense' }: Transactio
               className="input-finance"
               required
             />
+          </div>
+
+          {/* Recurring Option */}
+          <div className="p-4 bg-muted/50 rounded-xl space-y-4 border border-border/50">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="recurring" className="text-base">Repetir lançamento</Label>
+                <p className="text-xs text-muted-foreground">
+                  Criar automaticamente nos próximos períodos
+                </p>
+              </div>
+              <Switch
+                id="recurring"
+                checked={isRecurring}
+                onCheckedChange={setIsRecurring}
+              />
+            </div>
+
+            {isRecurring && (
+              <div className="grid grid-cols-2 gap-4 pt-2 animate-in fade-in slide-in-from-top-2">
+                <div>
+                  <Label className="text-xs mb-1.5 block">Frequência</Label>
+                  <select
+                    className="input-finance w-full text-sm py-2"
+                    value={frequency}
+                    onChange={(e) => setFrequency(e.target.value as Frequency)}
+                  >
+                    <option value="weekly">Semanal</option>
+                    <option value="monthly">Mensal</option>
+                    <option value="yearly">Anual</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Data Final (Opcional)</Label>
+                  <input
+                    type="date"
+                    className="input-finance w-full text-sm py-2"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={date}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Payment Method */}

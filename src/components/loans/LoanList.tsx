@@ -1,4 +1,3 @@
-```typescript
 import { Loan } from '@/types/loan';
 import { LoanCard } from './LoanCard';
 
@@ -24,4 +23,3 @@ export function LoanList({ loans, onAmortize }: LoanListProps) {
         </div>
     );
 }
-```

@@ -11,19 +11,19 @@ import Transactions from "./pages/Transactions";
 import Cards from "./pages/Cards";
 import Goals from "./pages/Goals";
 import Settings from "./pages/Settings";
-import Subscription from "./pages/Subscription";
 import Loans from "./pages/Loans";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AuthProvider>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -31,14 +31,14 @@ const App = () => (
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/cards" element={<Cards />} />
             <Route path="/goals" element={<Goals />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/subscription" element={<Subscription />} />
             <Route path="/loans" element={<Loans />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </TooltipProvider>
   </QueryClientProvider>
 );
 

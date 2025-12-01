@@ -3,6 +3,14 @@ export type InterestType = 'compound' | 'fixed_installment'; // Composto ou Tabe
 export type InterestPeriod = 'monthly' | 'yearly';
 export type LoanStatus = 'active' | 'paid' | 'defaulted';
 
+export interface Payment {
+  id: string;
+  loanId: string;
+  amount: number;
+  date: Date;
+  note?: string;
+}
+
 export interface LoanInstallment {
   number: number;
   dueDate: Date;
@@ -12,14 +20,6 @@ export interface LoanInstallment {
   balance: number; // Saldo devedor após pagamento
   status: 'pending' | 'paid' | 'late';
   paidAt?: Date;
-}
-
-export interface Payment {
-  id: string;
-  loanId: string;
-  amount: number;
-  date: Date;
-  note?: string;
 }
 
 export interface Loan {
@@ -38,10 +38,11 @@ export interface Loan {
   totalAmount: number; // Valor total a pagar (inicialmente projetado)
   monthlyPayment?: number; // Valor da parcela (se aplicável)
   installments: LoanInstallment[];
+  payments: Payment[]; // Lista de pagamentos realizados
 
-  // Controle de Pagamentos e Saldo
-  payments: Payment[];
-  lastPaymentDate?: Date;
+  // Campos de estado atual (calculados em tempo de execução)
+  currentBalance?: number;
+  totalPaid?: number;
 
   status: LoanStatus;
 
