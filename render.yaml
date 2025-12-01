@@ -1,9 +1,11 @@
-services:
-  - type: web
-    name: finance-app
-    env: static
+staticSites:
+  - name: finance-app
     buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    publishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_SUPABASE_PROJECT_ID
         sync: false
@@ -13,7 +15,3 @@ services:
         sync: false
       - key: VITE_GEMINI_API_KEY
         sync: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
