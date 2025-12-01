@@ -109,21 +109,58 @@ export default function Dashboard() {
     <AppLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl lg:text-3xl font-display font-bold">Dashboard</h1>
-            <p className="text-muted-foreground">Visão geral das suas finanças</p>
+        {/* Header */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl lg:text-3xl font-display font-bold">Dashboard</h1>
+              <p className="text-muted-foreground">Visão geral das suas finanças</p>
+            </div>
+
+            {/* Desktop Controls */}
+            <div className="hidden lg:flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-card rounded-xl p-2 border border-border">
+                <button
+                  onClick={() => navigateMonth('prev')}
+                  className="p-2 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="font-medium min-w-[120px] text-center">
+                  {format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR })}
+                </span>
+                <button
+                  onClick={() => navigateMonth('next')}
+                  className="p-2 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+
+              <FinancialAdvisor />
+              <MagicInput onTransactionGenerated={handleMagicTransaction} />
+
+              <button
+                onClick={handleOpenNewTransaction}
+                className="btn-finance-primary"
+              >
+                <Plus size={20} />
+                <span>Novo Lançamento</span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            {/* Month Navigator */}
-            <div className="flex items-center gap-2 bg-card rounded-xl p-2 border border-border">
+
+          {/* Mobile Controls */}
+          <div className="flex flex-col gap-3 lg:hidden">
+            {/* Month Navigator Mobile */}
+            <div className="flex items-center justify-between bg-card rounded-xl p-2 border border-border w-full">
               <button
                 onClick={() => navigateMonth('prev')}
                 className="p-2 rounded-lg hover:bg-muted transition-colors"
               >
                 <ChevronLeft size={18} />
               </button>
-              <span className="font-medium min-w-[120px] text-center">
+              <span className="font-medium text-center capitalize">
                 {format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR })}
               </span>
               <button
@@ -134,16 +171,17 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <FinancialAdvisor />
-            <MagicInput onTransactionGenerated={handleMagicTransaction} />
-
-            <button
-              onClick={handleOpenNewTransaction}
-              className="btn-finance-primary"
-            >
-              <Plus size={20} />
-              <span className="hidden sm:inline">Novo Lançamento</span>
-            </button>
+            {/* Action Buttons Grid */}
+            <div className="grid grid-cols-3 gap-2">
+              <FinancialAdvisor />
+              <MagicInput onTransactionGenerated={handleMagicTransaction} />
+              <button
+                onClick={handleOpenNewTransaction}
+                className="btn-finance-primary justify-center px-0"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
         </div>
 
