@@ -21,6 +21,10 @@ interface TransactionFormProps {
     date?: string;
     category_id?: string;
     type?: TransactionType;
+    id?: string;
+    payment_method?: PaymentMethod;
+    card_id?: string;
+    status?: 'paid' | 'pending';
   };
 }
 
@@ -38,8 +42,9 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
   const [amount, setAmount] = useState(initialData?.amount?.toString() || '');
   const [description, setDescription] = useState(initialData?.description || '');
   const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [cardId, setCardId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.payment_method || 'cash');
+  const [cardId, setCardId] = useState(initialData?.card_id || '');
+  const [status, setStatus] = useState<'paid' | 'pending'>(initialData?.status || 'paid');
 
   // Update form when initialData changes
   useEffect(() => {
@@ -49,6 +54,9 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
       setAmount(initialData.amount?.toString() || '');
       setDescription(initialData.description || '');
       setDate(initialData.date || new Date().toISOString().split('T')[0]);
+      setPaymentMethod(initialData.payment_method || 'cash');
+      setCardId(initialData.card_id || '');
+      setStatus(initialData.status || 'paid');
     }
   }, [initialData, defaultType]);
 
@@ -58,7 +66,7 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
   const [endDate, setEndDate] = useState('');
 
   const { incomeCategories, expenseCategories } = useCategories();
-  const { createTransaction } = useTransactions();
+  const { createTransaction, updateTransaction } = useTransactions();
   const { cards } = useCreditCards();
   const { canAddTransaction, isPremium, transactionLimit, profile } = useProfile();
 
@@ -77,7 +85,7 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
       return;
     }
 
-    await createTransaction.mutateAsync({
+    const transactionData = {
       type,
       category_id: categoryId,
       amount: parseFloat(amount),
@@ -88,7 +96,17 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
       is_recurring: isRecurring,
       recurring_frequency: isRecurring ? frequency : undefined,
       recurring_end_date: isRecurring && endDate ? endDate : undefined,
-    });
+      status,
+    };
+
+    if (initialData?.id) {
+      await updateTransaction.mutateAsync({
+        id: initialData.id,
+        ...transactionData
+      });
+    } else {
+      await createTransaction.mutateAsync(transactionData);
+    }
 
     onClose();
   };
@@ -108,7 +126,7 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
         className="w-full max-w-lg bg-card rounded-t-3xl lg:rounded-3xl p-6 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-display font-bold">Novo Lançamento</h2>
+          <h2 className="text-xl font-display font-bold">{initialData?.id ? 'Editar Lançamento' : 'Novo Lançamento'}</h2>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-muted transition-colors"
@@ -306,13 +324,44 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
             </div>
           )}
 
+          {/* Status Selection */}
+          <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
+            <label className="block text-sm font-medium mb-2">Status do Pagamento</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setStatus('paid')}
+                className={cn(
+                  "flex-1 py-2 rounded-lg text-sm font-medium transition-all border",
+                  status === 'paid'
+                    ? 'bg-green-100 text-green-700 border-green-200'
+                    : 'bg-background border-border text-muted-foreground hover:bg-muted'
+                )}
+              >
+                Pago
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatus('pending')}
+                className={cn(
+                  "flex-1 py-2 rounded-lg text-sm font-medium transition-all border",
+                  status === 'pending'
+                    ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                    : 'bg-background border-border text-muted-foreground hover:bg-muted'
+                )}
+              >
+                A Pagar
+              </button>
+            </div>
+          </div>
+
           {/* Submit */}
           <button
             type="submit"
             disabled={createTransaction.isPending}
             className="w-full btn-finance-primary py-4 text-lg"
           >
-            {createTransaction.isPending ? 'Salvando...' : 'Salvar Lançamento'}
+            {createTransaction.isPending || updateTransaction.isPending ? 'Salvando...' : (initialData?.id ? 'Atualizar Lançamento' : 'Salvar Lançamento')}
           </button>
         </form>
       </motion.div>

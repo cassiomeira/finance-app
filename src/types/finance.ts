@@ -92,6 +92,7 @@ export interface Transaction {
   is_recurring: boolean;
   recurring_frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | null;
   receipt_url: string | null;
+  status: 'paid' | 'pending'; // New field
   created_at: string;
   updated_at: string;
   category?: Category;

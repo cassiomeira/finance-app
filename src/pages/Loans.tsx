@@ -13,7 +13,7 @@ import {
 import { LoanForm } from '@/components/loans/LoanForm';
 import { LoanList } from '@/components/loans/LoanList';
 import { Loan } from '@/types/loan';
-import { calculateLoan, calculateCurrentDebt } from '@/utils/loanCalculations';
+import { calculateLoan, calculateCurrentDebt, calculateDynamicSchedule } from '@/utils/loanCalculations';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -70,25 +70,21 @@ export default function Loans() {
                         date: new Date(p.date),
                         note: p.note
                     })),
-                    // Recalcular projeções locais
-                    ...calculateLoan(
-                        Number(loan.principal_amount),
-                        Number(loan.interest_rate),
-                        loan.interest_period,
-                        loan.interest_type,
-                        loan.number_of_installments,
-                        new Date(loan.start_date)
-                    )
+                    // Inicializa com array vazio, será preenchido pelo calculateDynamicSchedule
+                    installments: [],
+                    totalAmount: 0
                 };
 
-                // Calcular saldo atual com pagamentos
-                const currentDebt = calculateCurrentDebt(mappedLoan, new Date());
+                // Calcular cronograma dinâmico
+                const dynamicData = calculateDynamicSchedule(mappedLoan, mappedLoan.payments);
 
-                // Atualizar saldo nas parcelas (visual apenas)
                 return {
                     ...mappedLoan,
-                    currentBalance: currentDebt.currentBalance,
-                    totalPaid: currentDebt.totalPaid
+                    installments: dynamicData.installments,
+                    currentBalance: dynamicData.currentBalance,
+                    totalPaid: dynamicData.totalPaid,
+                    // Total amount projetado é a soma das parcelas (já inclui juros)
+                    totalAmount: dynamicData.installments.reduce((sum, i) => sum + i.amount, 0)
                 };
             }));
 
@@ -152,6 +148,28 @@ export default function Loans() {
         }
     };
 
+    const handleDeleteLoan = async (loanId: string) => {
+        try {
+            const { error } = await supabase.from('loans').delete().eq('id', loanId);
+
+            if (error) throw error;
+
+            toast({
+                title: "Sucesso",
+                description: "Empréstimo excluído com sucesso!",
+            });
+
+            fetchLoans();
+        } catch (error) {
+            console.error('Erro ao excluir empréstimo:', error);
+            toast({
+                title: "Erro",
+                description: "Erro ao excluir empréstimo.",
+                variant: "destructive"
+            });
+        }
+    };
+
     const handleAmortize = async (loanId: string, amount: number) => {
         try {
             const { error } = await supabase.from('loan_payments').insert({
@@ -174,6 +192,47 @@ export default function Loans() {
             toast({
                 title: "Erro",
                 description: "Não foi possível registrar o pagamento.",
+                variant: "destructive"
+            });
+        }
+    };
+
+    const handleUpdatePayments = async (loanId: string, payments: { amount: number; date: Date; note?: string }[]) => {
+        try {
+            // 1. Deletar pagamentos existentes deste empréstimo (simplificação para garantir sincronia)
+            // *Nota*: Em produção, seria melhor fazer diff, mas para este app pessoal, replace é mais seguro para garantir consistência.
+            const { error: deleteError } = await supabase
+                .from('loan_payments')
+                .delete()
+                .eq('loan_id', loanId);
+
+            if (deleteError) throw deleteError;
+
+            // 2. Inserir novos pagamentos
+            if (payments.length > 0) {
+                const { error: insertError } = await supabase
+                    .from('loan_payments')
+                    .insert(payments.map(p => ({
+                        loan_id: loanId,
+                        amount: p.amount,
+                        date: p.date.toISOString(),
+                        note: p.note || 'Pagamento simulado/editado'
+                    })));
+
+                if (insertError) throw insertError;
+            }
+
+            toast({
+                title: "Sucesso",
+                description: "Pagamentos atualizados com sucesso!",
+            });
+
+            fetchLoans();
+        } catch (error) {
+            console.error('Erro ao atualizar pagamentos:', error);
+            toast({
+                title: "Erro",
+                description: "Erro ao salvar alterações.",
                 variant: "destructive"
             });
         }
@@ -223,7 +282,7 @@ export default function Loans() {
                 </Dialog>
             </div>
 
-            <LoanList loans={loans} onAmortize={handleAmortize} />
+            <LoanList loans={loans} onAmortize={handleAmortize} onDelete={handleDeleteLoan} onUpdatePayments={handleUpdatePayments} />
         </div>
     );
 }

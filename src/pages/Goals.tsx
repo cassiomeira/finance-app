@@ -29,7 +29,10 @@ export default function Goals() {
 
     const calculateSpent = (goal: typeof goals[0]) => {
         return transactions
-            .filter(t => t.type === 'expense' && t.category_id === goal.category_id)
+            .filter(t =>
+                t.type === 'expense' &&
+                (goal.category_id ? t.category_id === goal.category_id : true)
+            )
             .reduce((sum, t) => sum + Number(t.amount), 0);
     };
 
@@ -56,10 +59,10 @@ export default function Goals() {
                         onSubmit={handleSubmit}
                         className="card-finance space-y-4"
                     >
-                        <h3 className="font-semibold">Nova Meta por Categoria</h3>
+                        <h3 className="font-semibold">Nova Meta</h3>
 
-                        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input-finance" required>
-                            <option value="">Selecione uma categoria</option>
+                        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="input-finance">
+                            <option value="">Meta Geral (Todas as categorias)</option>
                             {expenseCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                         </select>
 
@@ -97,7 +100,7 @@ export default function Goals() {
                                             </div>
                                         )}
                                         <div>
-                                            <p className="font-semibold">{goal.category?.name || 'Sem categoria'}</p>
+                                            <p className="font-semibold">{goal.category?.name || 'Meta Geral'}</p>
                                             <p className="text-sm text-muted-foreground">{formatCurrency(spent)} / {formatCurrency(Number(goal.amount))}</p>
                                         </div>
                                     </div>

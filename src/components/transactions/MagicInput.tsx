@@ -3,10 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Camera, Mic, Upload, X, Loader2 } from 'lucide-react';
+import { Sparkles, Camera, Mic, Upload, X, Loader2, FileText, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCategories } from '@/hooks/useCategories';
+import { useCreditCards } from '@/hooks/useCreditCards';
+import { useTransactions } from '@/hooks/useTransactions';
 
 interface MagicInputProps {
     onTransactionGenerated: (transaction: any) => void;
@@ -17,6 +19,7 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('camera');
     const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [fileType, setFileType] = useState<string>('image/jpeg');
     const [textInput, setTextInput] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -26,11 +29,27 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
     const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
 
+    // Invoice/Card state
+    const [selectedCardId, setSelectedCardId] = useState<string>('');
+    const [isInvoiceMode, setIsInvoiceMode] = useState(false);
+    const [isPaid, setIsPaid] = useState(true);
+
     const { categories } = useCategories();
+    const { cards } = useCreditCards();
+    const { createTransaction } = useTransactions();
+
+    useEffect(() => {
+        if (selectedCardId) {
+            setIsPaid(false); // Default to pending for credit cards
+        } else {
+            setIsPaid(true); // Default to paid for others
+        }
+    }, [selectedCardId]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            setFileType(file.type);
             const reader = new FileReader();
             reader.onloadend = () => {
                 setImagePreview(reader.result as string);
@@ -148,25 +167,49 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
 
             let contents = [];
             const today = new Date().toISOString().split('T')[0];
-            const prompt = `
-        You are a financial assistant. Analyze the input and extract transaction data.
-        Today is ${today}.
-        Return ONLY a JSON object with this structure (no markdown, no code blocks):
-        {
-          "amount": number (use 0 if not found),
-          "description": string (brief description in Portuguese),
-          "date": string (YYYY-MM-DD, use today (${today}) if not found in the input),
-          "category_id": string (guess one of: food, transport, housing, utilities, health, leisure, education, shopping, salary, freelance, investment, other),
-          "type": "expense" | "income"
-        }
-      `;
+            const prompt = isInvoiceMode
+                ? `
+                You are a financial assistant. Analyze the credit card invoice (image or PDF) and extract ALL transactions.
+                Today is ${today}.
+                Return ONLY a JSON object with a "transactions" key containing an array of objects.
+                IMPORTANT: For the "date" field, ALWAYS use the INVOICE DUE DATE or TODAY'S DATE (${today}). 
+                Do NOT use the original purchase date if it is in the past (common in installments/parcelas). 
+                All extracted items must be recorded as expenses for the CURRENT invoice month.
+
+                Structure:
+                {
+                    "transactions": [
+                        {
+                            "amount": number,
+                            "description": string (brief description in Portuguese, keep installment info like 1/10),
+                            "date": string (YYYY-MM-DD, use invoice due date or ${today}),
+                            "category_id": string (guess one of: food, transport, housing, utilities, health, leisure, education, shopping, salary, freelance, investment, other),
+                            "type": "expense"
+                        }
+                    ]
+                }
+            `
+                : `
+                You are a financial assistant. Analyze the input and extract transaction data.
+                Today is ${today}.
+                Return ONLY a JSON object with this structure (no markdown, no code blocks):
+                {
+                  "amount": number (use 0 if not found),
+                  "description": string (brief description in Portuguese),
+                  "date": string (YYYY-MM-DD, use today (${today}) if not found in the input),
+                  "category_id": string (guess one of: food, transport, housing, utilities, health, leisure, education, shopping, salary, freelance, investment, other),
+                  "type": "expense" | "income"
+                }
+            `;
 
             if (activeTab === 'camera' && imagePreview) {
-                const base64Image = imagePreview.split(',')[1];
+                const base64Data = imagePreview.split(',')[1];
+                const mimeType = fileType === 'application/pdf' ? 'application/pdf' : 'image/jpeg';
+
                 contents = [{
                     parts: [
                         { text: prompt },
-                        { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                        { inline_data: { mime_type: mimeType, data: base64Data } }
                     ]
                 }];
             } else if (activeTab === 'text' && textInput) {
@@ -200,15 +243,41 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
 
             toast.success("Processado com sucesso!");
 
-            const mappedCategoryId = findCategoryId(result.category_id);
+            if (isInvoiceMode && result.transactions && Array.isArray(result.transactions)) {
+                let processedCount = 0;
+                for (const tx of result.transactions) {
+                    const mappedCategoryId = findCategoryId(tx.category_id);
 
-            onTransactionGenerated({
-                description: result.description,
-                amount: result.amount,
-                date: result.date,
-                category_id: mappedCategoryId,
-                type: result.type
-            });
+                    // Salvar diretamente no banco
+                    await createTransaction.mutateAsync({
+                        description: tx.description,
+                        amount: tx.amount,
+                        date: tx.date,
+                        category_id: mappedCategoryId || undefined, // Envia undefined se for string vazia
+                        type: 'expense',
+                        payment_method: 'credit',
+                        card_id: selectedCardId || undefined, // Envia undefined se for string vazia
+                        status: isPaid ? 'paid' : 'pending'
+                    } as any); // Type cast temporário para contornar a definição estrita de CreateTransactionInput
+
+                    processedCount++;
+                    toast.success(`Lançado ${processedCount}/${result.transactions.length}: ${tx.description}`);
+                    await new Promise(resolve => setTimeout(resolve, 800)); // Delay para feedback visual
+                }
+                toast.success(`Fatura processada! ${processedCount} itens salvos com sucesso.`);
+            } else {
+                const mappedCategoryId = findCategoryId(result.category_id);
+                onTransactionGenerated({
+                    description: result.description,
+                    amount: result.amount,
+                    date: result.date,
+                    category_id: mappedCategoryId || undefined,
+                    type: result.type,
+                    payment_method: selectedCardId ? 'credit' : undefined,
+                    card_id: selectedCardId || undefined,
+                    status: isPaid ? 'paid' : 'pending'
+                });
+            }
 
             setIsOpen(false);
             resetForm();
@@ -224,6 +293,7 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
         setImagePreview(null);
         setTextInput('');
         if (fileInputRef.current) fileInputRef.current.value = '';
+        // Não resetamos o cartão selecionado propositalmente para facilitar múltiplos lançamentos
     };
 
     const toggleRecording = () => {
@@ -343,7 +413,7 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
                             type="file"
                             ref={fileInputRef}
                             className="hidden"
-                            accept="image/*"
+                            accept="image/*,application/pdf"
                             onChange={handleFileChange}
                         />
 
@@ -353,13 +423,20 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
                                     initial={{ opacity: 0, scale: 0.9 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     exit={{ opacity: 0, scale: 0.9 }}
-                                    className="relative w-full h-full flex items-center justify-center"
+                                    className="relative w-full h-full flex items-center justify-center bg-muted/20 rounded-lg p-4"
                                 >
-                                    <img
-                                        src={imagePreview}
-                                        alt="Preview"
-                                        className="max-h-[300px] rounded-lg shadow-sm object-contain"
-                                    />
+                                    {fileType === 'application/pdf' ? (
+                                        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                            <FileText size={64} className="text-red-500" />
+                                            <span className="text-sm font-medium">Documento PDF Selecionado</span>
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={imagePreview}
+                                            alt="Preview"
+                                            className="max-h-[300px] rounded-lg shadow-sm object-contain"
+                                        />
+                                    )}
                                     <Button
                                         size="icon"
                                         variant="destructive"
@@ -399,6 +476,50 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
                     </TabsContent>
                 </Tabs>
 
+                {/* Card Selection */}
+                {cards.length > 0 && (
+                    <div className="space-y-2 pt-2 border-t">
+                        <label className="text-sm font-medium flex items-center gap-2">
+                            <CreditCard size={16} />
+                            Vincular ao Cartão (Opcional)
+                        </label>
+                        <select
+                            className="w-full p-2 rounded-md border bg-background text-sm"
+                            value={selectedCardId}
+                            onChange={(e) => {
+                                setSelectedCardId(e.target.value);
+                                setIsInvoiceMode(!!e.target.value); // Ativa modo fatura se selecionar cartão
+                            }}
+                        >
+                            <option value="">Nenhum (Lançamento Comum)</option>
+                            {cards.map(card => (
+                                <option key={card.id} value={card.id}>{card.name}</option>
+                            ))}
+                        </select>
+                        {isInvoiceMode && (
+                            <p className="text-xs text-blue-500 font-medium">
+                                Modo Fatura Ativo: A IA buscará múltiplos itens na imagem.
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* Status Selection */}
+                <div className="flex items-center gap-2 pt-2">
+                    <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={isPaid}
+                            onChange={(e) => setIsPaid(e.target.checked)}
+                            className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                        />
+                        <span>Já foi pago?</span>
+                    </label>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isPaid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {isPaid ? 'Pago' : 'A Pagar'}
+                    </span>
+                </div>
+
                 <Button
                     className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
                     onClick={handleProcess}
@@ -417,6 +538,6 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
                     )}
                 </Button>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

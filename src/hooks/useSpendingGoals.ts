@@ -47,15 +47,10 @@ export function useSpendingGoals() {
         mutationFn: async (input: Partial<SpendingGoal>) => {
             if (!user?.id) throw new Error('No user');
 
-            // Se for global, ignoramos por enquanto ou tratamos de outra forma, 
-            // pois a tabela budgets exige category_id.
-            // Vamos focar em metas por categoria.
-            if (!input.category_id) {
-                throw new Error("Meta global não suportada nesta versão. Selecione uma categoria.");
-            }
-
-            // Verificar se já existe meta para essa categoria neste mês
-            const existing = goals.find(g => g.category_id === input.category_id);
+            // Verificar se já existe meta para essa categoria (ou meta geral) neste mês
+            const existing = goals.find(g =>
+                input.category_id ? g.category_id === input.category_id : !g.category_id
+            );
 
             if (existing) {
                 // Atualizar
@@ -70,7 +65,7 @@ export function useSpendingGoals() {
                     .from('budgets' as any) as any)
                     .insert({
                         user_id: user.id,
-                        category_id: input.category_id,
+                        category_id: input.category_id || null, // Null for general goal
                         amount: input.amount,
                         month: input.month || currentMonth,
                         year: input.year || currentYear
@@ -83,7 +78,11 @@ export function useSpendingGoals() {
             toast.success('Meta salva com sucesso!');
         },
         onError: (error) => {
-            toast.error('Erro ao salvar meta: ' + error.message);
+            if (error.message.includes('category_id') && error.message.includes('not-null constraint')) {
+                toast.error('⚠️ ATENÇÃO: Você precisa rodar o comando SQL para permitir metas gerais!');
+            } else {
+                toast.error('Erro ao salvar meta: ' + error.message);
+            }
         },
     });
 

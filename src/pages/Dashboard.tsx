@@ -24,6 +24,7 @@ import { useSpendingGoals } from '@/hooks/useSpendingGoals';
 import { useProfile } from '@/hooks/useProfile';
 import { format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Transaction } from '@/types/finance';
 
 export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
@@ -33,7 +34,7 @@ export default function Dashboard() {
   const month = selectedMonth.getMonth() + 1;
   const year = selectedMonth.getFullYear();
 
-  const { transactions, totalIncome, totalExpense, balance, isLoading } = useTransactions(month, year);
+  const { transactions, totalIncome, totalExpense, balance, isLoading, deleteTransaction } = useTransactions(month, year);
   const { cards } = useCreditCards();
   const { goals } = useSpendingGoals();
   // Find global goal or sum of category goals for demo
@@ -102,6 +103,20 @@ export default function Dashboard() {
 
   const handleOpenNewTransaction = () => {
     setInitialFormData(null);
+    setShowForm(true);
+  };
+
+  const handleEdit = (transaction: Transaction) => {
+    setInitialFormData({
+      id: transaction.id,
+      amount: Number(transaction.amount),
+      description: transaction.description || '',
+      date: transaction.date,
+      category_id: transaction.category_id || '',
+      type: transaction.type,
+      payment_method: transaction.payment_method,
+      card_id: transaction.card_id || ''
+    });
     setShowForm(true);
   };
 
@@ -303,7 +318,12 @@ export default function Dashboard() {
               Ver todas
             </a>
           </div>
-          <TransactionList transactions={transactions.slice(0, 5)} />
+          <TransactionList
+            transactions={transactions.slice(0, 5)}
+            onDelete={(id) => deleteTransaction.mutate(id)}
+            onEdit={handleEdit}
+            showDelete
+          />
         </motion.div>
       </div>
 

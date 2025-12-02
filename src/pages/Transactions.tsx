@@ -7,9 +7,11 @@ import { TransactionForm } from '@/components/transactions/TransactionForm';
 import { useTransactions } from '@/hooks/useTransactions';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Transaction } from '@/types/finance';
 
 export default function Transactions() {
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date());
 
@@ -33,6 +35,16 @@ export default function Transactions() {
       }
       return newDate;
     });
+  };
+
+  const handleEdit = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setShowForm(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingTransaction(null);
   };
 
   return (
@@ -83,13 +95,28 @@ export default function Transactions() {
           <TransactionList
             transactions={filteredTransactions}
             onDelete={(id) => deleteTransaction.mutate(id)}
+            onEdit={handleEdit}
             showDelete
           />
         </div>
       </div>
 
       <AnimatePresence>
-        {showForm && <TransactionForm onClose={() => setShowForm(false)} />}
+        {showForm && (
+          <TransactionForm
+            onClose={handleCloseForm}
+            initialData={editingTransaction ? {
+              id: editingTransaction.id,
+              amount: Number(editingTransaction.amount),
+              description: editingTransaction.description || '',
+              date: editingTransaction.date,
+              category_id: editingTransaction.category_id || '',
+              type: editingTransaction.type,
+              payment_method: editingTransaction.payment_method,
+              card_id: editingTransaction.card_id || ''
+            } : undefined}
+          />
+        )}
       </AnimatePresence>
     </AppLayout>
   );

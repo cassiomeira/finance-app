@@ -19,19 +19,47 @@ export function useCreditCards() {
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ['credit_cards', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // 1. Fetch cards
+      const { data: cardsData, error: cardsError } = await supabase
         .from('credit_cards')
         .select('*')
         .eq('user_id', user?.id)
         .order('name');
 
-      if (error) throw error;
+      if (cardsError) throw cardsError;
 
-      // Mapear limit_amount (banco) para card_limit (frontend)
-      return (data || []).map((card: any) => ({
+      // 2. Fetch pending transactions for usage calculation
+      // We use a try-catch or simplified error handling here to prevent the whole query from failing
+      // if the 'status' column hasn't been added to the database yet.
+      let usageMap: Record<string, number> = {};
+
+      try {
+        const { data: usageData, error: usageError } = await supabase
+          .from('transactions')
+          .select('card_id, amount')
+          .eq('user_id', user?.id)
+          .eq('payment_method', 'credit')
+          .eq('status', 'pending');
+
+        if (!usageError && usageData) {
+          usageData.forEach((t: any) => {
+            if (t.card_id) {
+              usageMap[t.card_id] = (usageMap[t.card_id] || 0) + Number(t.amount);
+            }
+          });
+        } else if (usageError) {
+          console.warn('Error fetching card usage (possibly missing status column):', usageError);
+        }
+      } catch (err) {
+        console.warn('Exception fetching card usage:', err);
+      }
+
+      // 3. Map and merge
+      return (cardsData || []).map((card: any) => ({
         ...card,
-        card_limit: card.limit_amount || card.card_limit || 0
-      })) as CreditCard[];
+        card_limit: card.limit_amount || card.card_limit || 0,
+        used_limit: usageMap[card.id] || 0
+      })) as (CreditCard & { used_limit: number })[];
     },
     enabled: !!user?.id,
   });

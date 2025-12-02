@@ -15,6 +15,7 @@ interface CreateTransactionInput {
   is_recurring?: boolean;
   recurring_frequency?: Frequency;
   recurring_end_date?: string;
+  status?: 'paid' | 'pending';
 }
 
 export function useTransactions(month?: number, year?: number) {
@@ -48,6 +49,7 @@ export function useTransactions(month?: number, year?: number) {
         ...t,
         type: t.type as TransactionType,
         payment_method: t.payment_method as PaymentMethod,
+        status: t.status as 'paid' | 'pending', // Ensure status is typed
         category: t.category ? {
           ...t.category,
           type: t.category.type as TransactionType
@@ -73,6 +75,7 @@ export function useTransactions(month?: number, year?: number) {
           payment_method: input.payment_method,
           card_id: input.card_id,
           user_id: user.id,
+          status: input.status || (input.payment_method === 'credit' ? 'pending' : 'paid') // Default logic
         });
 
       if (error) throw error;
@@ -122,6 +125,105 @@ export function useTransactions(month?: number, year?: number) {
     },
   });
 
+  const updateTransaction = useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<CreateTransactionInput> & { id: string }) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update(updates)
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      toast.success('Lançamento atualizado!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao atualizar lançamento: ' + error.message);
+    },
+  });
+
+  const toggleTransactionStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'paid' | 'pending' }) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      toast.success('Status atualizado!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao atualizar status: ' + error.message);
+    },
+  });
+
+  const payInvoice = useMutation({
+    mutationFn: async (cardId: string) => {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: 'paid' } as any)
+        .eq('card_id', cardId)
+        .eq('status', 'pending');
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
+      toast.success('Fatura paga com sucesso! Todas as despesas foram quitadas.');
+    },
+    onError: (error) => {
+      toast.error('Erro ao pagar fatura: ' + error.message);
+    },
+  });
+
+  const clearMonthTransactions = useMutation({
+    mutationFn: async ({ month, year }: { month: number; year: number }) => {
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', user?.id)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_cards'] }); // Update limits
+      toast.success('Lançamentos do mês removidos com sucesso!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao limpar mês: ' + error.message);
+    },
+  });
+
+  const clearAllTransactions = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
+      toast.success('Todos os lançamentos foram removidos!');
+    },
+    onError: (error) => {
+      toast.error('Erro ao limpar tudo: ' + error.message);
+    },
+  });
+
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + Number(t.amount), 0);
@@ -137,6 +239,11 @@ export function useTransactions(month?: number, year?: number) {
     isLoading,
     createTransaction,
     deleteTransaction,
+    updateTransaction,
+    toggleTransactionStatus,
+    payInvoice,
+    clearMonthTransactions,
+    clearAllTransactions,
     totalIncome,
     totalExpense,
     balance,
