@@ -11,6 +11,7 @@ import Transactions from "./pages/Transactions";
 import Cards from "./pages/Cards";
 import Goals from "./pages/Goals";
 import Settings from "./pages/Settings";
+import Categories from "./pages/Categories";
 import Loans from "./pages/Loans";
 import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/loans" element={<Loans />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/categories" element={<Categories />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
