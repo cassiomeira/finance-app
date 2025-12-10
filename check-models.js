@@ -1,4 +1,5 @@
-const apiKey = "AIzaSyCmm_9tbCd2My6RX17m4l7mul0ixZG0lOw";
+import 'dotenv/config';
+const apiKey = process.env.VITE_GEMINI_API_KEY;
 
 async function listModels() {
     try {
