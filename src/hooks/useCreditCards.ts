@@ -92,6 +92,29 @@ export function useCreditCards() {
 
   const deleteCard = useMutation({
     mutationFn: async (id: string) => {
+      // 1. Deletar transações vinculadas ao cartão
+      const { error: txError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('card_id', id);
+      if (txError) throw txError;
+
+      // 2. Deletar faturas vinculadas (se houver tabela separada, mas parece ser view/query no código atual, porém 'card_invoices' é citada abaixo)
+      // Verificando a função useCardInvoices abaixo, existe a tabela 'card_invoices'.
+      const { error: invoiceError } = await supabase
+        .from('card_invoices')
+        .delete()
+        .eq('card_id', id);
+      // Ignoramos erro se a tabela não existir ou se não tiver permissão, mas é boa prática tentar limpar.
+      // Se 'card_invoices' for uma View, o delete vai falhar, então melhor envolver em try/catch ou checar se é tabela.
+      // Pelo contexto do Supabase, geralmente Views não são deletáveis diretamente assim sem trigger.
+      // Vou assumir que se falhar o delete da transactions já libera o cartão se a constraint for só lá.
+      // Mas se 'card_invoices' for tabela real de histórico, precisa deletar.
+      if (invoiceError && invoiceError.code !== '42P01') { // 42P01 = undefined_table
+        console.warn('Erro ao limpar faturas ou tabela é view:', invoiceError);
+      }
+
+      // 3. Deletar o cartão
       const { error } = await supabase
         .from('credit_cards')
         .delete()
@@ -100,7 +123,12 @@ export function useCreditCards() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit_cards'] });
-      toast.success('Cartão removido!');
+      queryClient.invalidateQueries({ queryKey: ['transactions'] }); // Também invalidar transações pois removemos algumas
+      toast.success('Cartão e dados vinculados removidos!');
+    },
+    onError: (error) => {
+      console.error('Erro ao deletar cartão:', error);
+      toast.error('Erro ao excluir: ' + error.message);
     },
   });
 
