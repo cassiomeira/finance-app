@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useCategories } from '@/hooks/useCategories';
 import { useAuth } from '@/contexts/AuthContext';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
 import { Category, TransactionType } from '@/types/finance';
 import { Plus, Pencil, Trash2, X, Check } from 'lucide-react';
@@ -155,91 +156,93 @@ export default function Categories() {
     );
 
     return (
-        <div className="space-y-6 pb-20 lg:pb-0">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-display font-bold">Categorias</h1>
-                    <p className="text-muted-foreground">Gerencie suas categorias de receitas e despesas</p>
+        <AppLayout>
+            <div className="space-y-6 pb-20 lg:pb-0">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-display font-bold">Categorias</h1>
+                        <p className="text-muted-foreground">Gerencie suas categorias de receitas e despesas</p>
+                    </div>
                 </div>
+
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TransactionType)} className="w-full">
+                    <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+                        <TabsTrigger value="expense">Despesas</TabsTrigger>
+                        <TabsTrigger value="income">Receitas</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="expense" className="animate-in fade-in-50">
+                        {isLoading ? <p>Carregando...</p> : <CategoryList list={expenseCategories} />}
+                    </TabsContent>
+                    <TabsContent value="income" className="animate-in fade-in-50">
+                        {isLoading ? <p>Carregando...</p> : <CategoryList list={incomeCategories} />}
+                    </TabsContent>
+                </Tabs>
+
+                {/* Create/Edit Modal */}
+                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleSave} className="space-y-4 py-4">
+                            <div>
+                                <label className="text-sm font-medium mb-1.5 block">Nome</label>
+                                <Input
+                                    value={name}
+                                    onChange={e => setName(e.target.value)}
+                                    placeholder="Ex: Alimentação"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium mb-1.5 block">Ícone</label>
+                                <div className="grid grid-cols-6 gap-2 max-h-40 overflow-y-auto p-2 border rounded-lg">
+                                    {AVAILABLE_ICONS.map((ic) => (
+                                        <button
+                                            key={ic}
+                                            type="button"
+                                            onClick={() => setIcon(ic)}
+                                            className={cn(
+                                                "p-2 rounded-lg hover:bg-muted flex items-center justify-center transition-colors",
+                                                icon === ic ? "bg-primary/10 text-primary ring-2 ring-primary ring-offset-1" : "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CategoryIcon name={ic} size={20} />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium mb-1.5 block">Cor</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_COLORS.map((c) => (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            onClick={() => setColor(c)}
+                                            className={cn(
+                                                "w-6 h-6 rounded-full border border-black/10 transition-transform",
+                                                color === c ? "scale-125 ring-2 ring-offset-2 ring-black/50" : "hover:scale-110"
+                                            )}
+                                            style={{ backgroundColor: c }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            <DialogFooter className="pt-4">
+                                <DialogClose asChild>
+                                    <Button type="button" variant="ghost">Cancelar</Button>
+                                </DialogClose>
+                                <Button type="submit">{editingCategory ? 'Salvar Alterações' : 'Criar Categoria'}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </div>
-
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TransactionType)} className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
-                    <TabsTrigger value="expense">Despesas</TabsTrigger>
-                    <TabsTrigger value="income">Receitas</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="expense" className="animate-in fade-in-50">
-                    {isLoading ? <p>Carregando...</p> : <CategoryList list={expenseCategories} />}
-                </TabsContent>
-                <TabsContent value="income" className="animate-in fade-in-50">
-                    {isLoading ? <p>Carregando...</p> : <CategoryList list={incomeCategories} />}
-                </TabsContent>
-            </Tabs>
-
-            {/* Create/Edit Modal */}
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleSave} className="space-y-4 py-4">
-                        <div>
-                            <label className="text-sm font-medium mb-1.5 block">Nome</label>
-                            <Input
-                                value={name}
-                                onChange={e => setName(e.target.value)}
-                                placeholder="Ex: Alimentação"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-medium mb-1.5 block">Ícone</label>
-                            <div className="grid grid-cols-6 gap-2 max-h-40 overflow-y-auto p-2 border rounded-lg">
-                                {AVAILABLE_ICONS.map((ic) => (
-                                    <button
-                                        key={ic}
-                                        type="button"
-                                        onClick={() => setIcon(ic)}
-                                        className={cn(
-                                            "p-2 rounded-lg hover:bg-muted flex items-center justify-center transition-colors",
-                                            icon === ic ? "bg-primary/10 text-primary ring-2 ring-primary ring-offset-1" : "text-muted-foreground"
-                                        )}
-                                    >
-                                        <CategoryIcon name={ic} size={20} />
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="text-sm font-medium mb-1.5 block">Cor</label>
-                            <div className="flex flex-wrap gap-2">
-                                {AVAILABLE_COLORS.map((c) => (
-                                    <button
-                                        key={c}
-                                        type="button"
-                                        onClick={() => setColor(c)}
-                                        className={cn(
-                                            "w-6 h-6 rounded-full border border-black/10 transition-transform",
-                                            color === c ? "scale-125 ring-2 ring-offset-2 ring-black/50" : "hover:scale-110"
-                                        )}
-                                        style={{ backgroundColor: c }}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-
-                        <DialogFooter className="pt-4">
-                            <DialogClose asChild>
-                                <Button type="button" variant="ghost">Cancelar</Button>
-                            </DialogClose>
-                            <Button type="submit">{editingCategory ? 'Salvar Alterações' : 'Criar Categoria'}</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-        </div>
+        </AppLayout>
     );
 }
