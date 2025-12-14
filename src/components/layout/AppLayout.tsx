@@ -13,7 +13,8 @@ import {
   Target,
   Crown,
   Wallet,
-  BarChart3
+  BarChart3,
+  Tag
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -30,6 +31,7 @@ const navItems = [
   { path: '/goals', icon: Target, label: 'Metas' },
   { path: '/reports', icon: BarChart3, label: 'Relatórios' },
   { path: '/loans', icon: Banknote, label: 'Empréstimos' },
+  { path: '/categories', icon: Tag, label: 'Categorias' },
   { path: '/settings', icon: Settings, label: 'Configurações' },
 ];
 

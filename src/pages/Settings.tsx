@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTransactions } from '@/hooks/useTransactions';
-import { Crown, User, Mail, Trash2, AlertTriangle, Settings as SettingsIcon } from 'lucide-react';
+import { Crown, User, Mail, Trash2, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -80,21 +80,6 @@ export default function Settings() {
           </div>
         </div>
 
-        <div className="card-finance">
-          <h3 className="font-semibold mb-4">Personalização</h3>
-          <Link to="/categories" className="flex items-center justify-between p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                <SettingsIcon size={20} />
-              </div>
-              <div>
-                <p className="font-medium">Categorias</p>
-                <p className="text-xs text-muted-foreground">Gerenciar receitas e despesas</p>
-              </div>
-            </div>
-            <Button size="sm" variant="ghost">Gerenciar</Button>
-          </Link>
-        </div>
 
         <div className="card-finance border-red-200 bg-red-50/50">
           <div className="flex items-center gap-2 mb-4 text-red-600">

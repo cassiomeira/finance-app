@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, TrendingUp, TrendingDown, Plus } from 'lucide-react';
+import { X, TrendingUp, TrendingDown } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCreditCards } from '@/hooks/useCreditCards';
@@ -60,54 +60,21 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
     }
   }, [initialData, defaultType]);
 
-  // Create Category State
-  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
-  const [newCatIcon, setNewCatIcon] = useState('Circle');
-  const [newCatColor, setNewCatColor] = useState('#64748B');
+  // Recurring state
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [frequency, setFrequency] = useState<Frequency>('monthly');
+  const [endDate, setEndDate] = useState('');
 
-  const { incomeCategories, expenseCategories, createCategory } = useCategories();
+  const { incomeCategories, expenseCategories } = useCategories();
   const { createTransaction, updateTransaction } = useTransactions();
   const { cards } = useCreditCards();
   const { canAddTransaction, isPremium, transactionLimit, profile } = useProfile();
 
   const categories = type === 'income' ? incomeCategories : expenseCategories;
 
-  const handleCreateCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const newCat = await createCategory.mutateAsync({
-        name: newCatName,
-        icon: newCatIcon,
-        color: newCatColor,
-        type: type
-      });
-      setCategoryId(newCat.id);
-      setIsCreateCategoryOpen(false);
-      // Reset form
-      setNewCatName('');
-      setNewCatIcon('Circle');
-      setNewCatColor(type === 'income' ? '#22C55E' : '#EF4444');
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const AVAILABLE_ICONS = [
-    'Briefcase', 'Laptop', 'TrendingUp', 'PiggyBank', 'Plus',
-    'UtensilsCrossed', 'Car', 'Gamepad2', 'Heart', 'FileText',
-    'GraduationCap', 'Home', 'ShoppingBag', 'CreditCard', 'MoreHorizontal',
-    'Circle', 'Wallet', 'Target', 'Settings', 'ArrowUpDown'
-  ];
-
-  const AVAILABLE_COLORS = [
-    '#EF4444', '#22C55E', '#3B82F6', '#EAB308', '#A855F7',
-    '#EC4899', '#F97316', '#14B8A6', '#6366F1', '#64748B'
-  ];
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // ... existing logic ...
+
     if (!canAddTransaction) {
       toast.error(`Limite de ${transactionLimit} transações mensais atingido. Faça upgrade para Premium!`);
       return;
@@ -152,67 +119,6 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
       className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-50 flex items-end lg:items-center justify-center p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      {/* Create Category Modal Overlay */}
-      {isCreateCategoryOpen && (
-        <div className="absolute inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-card w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-4"
-          >
-            <h3 className="font-bold text-lg">Nova Categoria</h3>
-            <form onSubmit={handleCreateCategory} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Nome</label>
-                <input
-                  className="input-finance w-full mt-1"
-                  value={newCatName}
-                  onChange={e => setNewCatName(e.target.value)}
-                  placeholder="Ex: Assinaturas"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Ícone</label>
-                <div className="grid grid-cols-5 gap-2 mt-1 h-32 overflow-y-auto p-2 border rounded-lg">
-                  {AVAILABLE_ICONS.map(icon => (
-                    <button
-                      key={icon}
-                      type="button"
-                      onClick={() => setNewCatIcon(icon)}
-                      className={cn("p-2 rounded hover:bg-muted flex items-center justify-center", newCatIcon === icon ? "bg-primary/20 ring-1 ring-primary" : "")}
-                    >
-                      <CategoryIcon name={icon} size={20} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold uppercase text-muted-foreground">Cor</label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {AVAILABLE_COLORS.map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setNewCatColor(c)}
-                      className={cn("w-6 h-6 rounded-full border-2", newCatColor === c ? "border-black scale-110" : "border-transparent")}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setIsCreateCategoryOpen(false)} className="flex-1 btn-finance-ghost">Cancelar</button>
-                <button type="submit" className="flex-1 btn-finance-primary">Criar</button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
-
       <motion.div
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
@@ -306,17 +212,6 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
                   <span className="text-xs truncate w-full text-center">{cat.name}</span>
                 </button>
               ))}
-              {/* Add New Category Button */}
-              <button
-                type="button"
-                onClick={() => setIsCreateCategoryOpen(true)}
-                className="p-3 rounded-xl flex flex-col items-center gap-1 transition-all bg-muted hover:bg-muted/80 border-2 border-dashed border-muted-foreground/20"
-              >
-                <div className="w-6 h-6 rounded-full bg-muted-foreground/20 flex items-center justify-center">
-                  <Plus size={16} className="text-muted-foreground" />
-                </div>
-                <span className="text-xs truncate w-full text-center text-muted-foreground font-medium">Nova</span>
-              </button>
             </div>
           </div>
 

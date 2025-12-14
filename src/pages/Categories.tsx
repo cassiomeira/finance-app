@@ -1,56 +1,66 @@
+
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Edit2, Trash2, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { useCategories } from '@/hooks/useCategories';
+import { useAuth } from '@/contexts/AuthContext';
 import { CategoryIcon } from '@/components/ui/CategoryIcon';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Category, TransactionType } from '@/types/finance';
+import { Plus, Pencil, Trash2, X, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+    DialogClose
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Category } from '@/types/finance';
-import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const AVAILABLE_ICONS = [
-    'Briefcase', 'Laptop', 'TrendingUp', 'PiggyBank', 'Plus',
+    'Briefcase', 'Laptop', 'TrendingUp', 'PiggyBank',
     'UtensilsCrossed', 'Car', 'Gamepad2', 'Heart', 'FileText',
     'GraduationCap', 'Home', 'ShoppingBag', 'CreditCard', 'MoreHorizontal',
-    'Circle', 'Wallet', 'Target', 'Settings', 'ArrowUpDown'
+    'Circle', 'Wallet', 'Target', 'Settings', 'ArrowUpDown', 'Plane',
+    'Baby', 'Shirt', 'Coffee', 'Music', 'Video', 'Wifi', 'Zap',
+    'Droplet', 'Hammer', 'Gift', 'Dog', 'Cat', 'Dumbbell'
 ];
 
 const AVAILABLE_COLORS = [
-    '#EF4444', // Red (Despesa default)
-    '#22C55E', // Green (Receita default)
-    '#3B82F6', // Blue
-    '#EAB308', // Yellow
-    '#A855F7', // Purple
-    '#EC4899', // Pink
-    '#F97316', // Orange
-    '#14B8A6', // Teal
-    '#6366F1', // Indigo
-    '#64748B', // Slate
+    '#EF4444', '#F97316', '#F59E0B', '#EAB308',
+    '#84CC16', '#22C55E', '#10B981', '#14B8A6',
+    '#06B6D4', '#0EA5E9', '#3B82F6', '#6366F1',
+    '#8B5CF6', '#A855F7', '#D946EF', '#EC4899',
+    '#F43F5E', '#64748B'
 ];
 
 export default function Categories() {
-    const { categories, incomeCategories, expenseCategories, createCategory, updateCategory, deleteCategory } = useCategories();
+    const {
+        incomeCategories,
+        expenseCategories,
+        createCategory,
+        updateCategory,
+        deleteCategory,
+        isLoading
+    } = useCategories();
+    const { user } = useAuth();
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+    const [activeTab, setActiveTab] = useState<TransactionType>('expense');
 
     // Form State
     const [name, setName] = useState('');
     const [icon, setIcon] = useState('Circle');
     const [color, setColor] = useState('#64748B');
-    const [type, setType] = useState<'income' | 'expense'>('expense');
 
     const handleOpenCreate = () => {
         setEditingCategory(null);
         setName('');
         setIcon('Circle');
-        setColor(type === 'income' ? '#22C55E' : '#EF4444');
-        // Maintain current type tab
+        setColor(activeTab === 'income' ? '#22C55E' : '#EF4444');
         setIsModalOpen(true);
     };
 
@@ -59,200 +69,177 @@ export default function Categories() {
         setName(category.name);
         setIcon(category.icon);
         setColor(category.color);
-        setType(category.type);
         setIsModalOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        const categoryData = {
-            name,
-            icon,
-            color,
-            type
-        };
-
-        if (editingCategory) {
-            await updateCategory.mutateAsync({
-                id: editingCategory.id,
-                ...categoryData
-            });
-        } else {
-            await createCategory.mutateAsync(categoryData);
+        try {
+            if (editingCategory) {
+                await updateCategory.mutateAsync({
+                    id: editingCategory.id,
+                    name,
+                    icon,
+                    color,
+                    type: editingCategory.type // Keep original type
+                });
+            } else {
+                await createCategory.mutateAsync({
+                    name,
+                    icon,
+                    color,
+                    type: activeTab
+                });
+            }
+            setIsModalOpen(false);
+        } catch (error) {
+            console.error(error);
         }
-
-        setIsModalOpen(false);
     };
 
-    const handleDelete = async (id: string, name: string) => {
-        if (confirm(`Tem certeza que deseja excluir a categoria "${name}"?`)) {
+    const handleDelete = async (id: string) => {
+        if (confirm('Tem certeza que deseja excluir esta categoria?')) {
             await deleteCategory.mutateAsync(id);
         }
     };
 
-    return (
-        <AppLayout>
-            <div className="space-y-6 max-w-4xl mx-auto">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Link to="/settings" className="p-2 hover:bg-muted rounded-full">
-                            <ArrowLeft size={20} />
-                        </Link>
+    // Only show edit/delete for user's own categories
+    const canModify = (cat: Category) => cat.user_id === user?.id;
+
+    const CategoryList = ({ list }: { list: Category[] }) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {list.map((cat) => (
+                <motion.div
+                    key={cat.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-card p-4 rounded-xl border border-border flex items-center justify-between group hover:shadow-md transition-all"
+                >
+                    <div className="flex items-center gap-3">
+                        <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center text-white shadow-sm"
+                            style={{ backgroundColor: cat.color }}
+                        >
+                            <CategoryIcon name={cat.icon} size={20} className="text-white" />
+                        </div>
                         <div>
-                            <h1 className="text-2xl lg:text-3xl font-display font-bold">Categorias</h1>
-                            <p className="text-muted-foreground">Gerencie suas categorias de receitas e despesas</p>
+                            <h3 className="font-medium">{cat.name}</h3>
+                            {cat.is_default && <span className="text-[10px] uppercase bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Padrão</span>}
                         </div>
                     </div>
-                    <Button onClick={handleOpenCreate} className="btn-finance-primary">
-                        <Plus size={20} className="mr-2" />
-                        Nova Categoria
-                    </Button>
-                </div>
 
-                <Tabs defaultValue="expense" value={type} onValueChange={(v) => setType(v as 'income' | 'expense')} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-6">
-                        <TabsTrigger value="expense">Despesas</TabsTrigger>
-                        <TabsTrigger value="income">Receitas</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="expense" className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {expenseCategories.map((cat) => (
-                                <CategoryCard
-                                    key={cat.id}
-                                    category={cat}
-                                    onEdit={() => handleOpenEdit(cat)}
-                                    onDelete={() => handleDelete(cat.id, cat.name)}
-                                />
-                            ))}
+                    {canModify(cat) ? (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => handleOpenEdit(cat)}>
+                                <Pencil size={16} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(cat.id)}>
+                                <Trash2 size={16} />
+                            </Button>
                         </div>
-                    </TabsContent>
-
-                    <TabsContent value="income" className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {incomeCategories.map((cat) => (
-                                <CategoryCard
-                                    key={cat.id}
-                                    category={cat}
-                                    onEdit={() => handleOpenEdit(cat)}
-                                    onDelete={() => handleDelete(cat.id, cat.name)}
-                                />
-                            ))}
+                    ) : (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="text-xs text-muted-foreground">Sistema</span>
                         </div>
-                    </TabsContent>
-                </Tabs>
-
-                <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                    <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-6 py-4">
-
-                            <div className="space-y-2">
-                                <Label>Nome</Label>
-                                <Input
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="Ex: Alimentação"
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Ícone</Label>
-                                <div className="grid grid-cols-5 gap-2 p-2 border rounded-lg max-h-[150px] overflow-y-auto">
-                                    {AVAILABLE_ICONS.map((iconName) => (
-                                        <button
-                                            key={iconName}
-                                            type="button"
-                                            onClick={() => setIcon(iconName)}
-                                            className={cn(
-                                                "p-2 rounded-lg flex items-center justify-center transition-all hover:bg-muted",
-                                                icon === iconName ? "bg-primary/20 ring-2 ring-primary" : ""
-                                            )}
-                                        >
-                                            <CategoryIcon name={iconName} color={icon === iconName ? color : undefined} size={24} />
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Cor</Label>
-                                <div className="flex flex-wrap gap-3">
-                                    {AVAILABLE_COLORS.map((c) => (
-                                        <button
-                                            key={c}
-                                            type="button"
-                                            onClick={() => setColor(c)}
-                                            className={cn(
-                                                "w-8 h-8 rounded-full border-2 transition-all",
-                                                color === c ? "border-black scale-110" : "border-transparent"
-                                            )}
-                                            style={{ backgroundColor: c }}
-                                        />
-                                    ))}
-                                    <input
-                                        type="color"
-                                        value={color}
-                                        onChange={(e) => setColor(e.target.value)}
-                                        className="w-8 h-8 rounded-full overflow-hidden cursor-pointer"
-                                    />
-                                </div>
-                            </div>
-
-                            <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-                                <Button type="submit" disabled={createCategory.isPending || updateCategory.isPending}>
-                                    {createCategory.isPending || updateCategory.isPending ? 'Salvando...' : 'Salvar'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
-            </div>
-        </AppLayout>
+                    )}
+                </motion.div>
+            ))}
+            <button
+                onClick={handleOpenCreate}
+                className="border-2 border-dashed border-muted-foreground/20 rounded-xl p-4 flex items-center justify-center gap-2 text-muted-foreground hover:border-primary/50 hover:text-primary hover:bg-primary/5 transition-all h-[88px]"
+            >
+                <Plus size={20} />
+                <span>Nova Categoria</span>
+            </button>
+        </div>
     );
-}
-
-function CategoryCard({ category, onEdit, onDelete }: { category: Category, onEdit: () => void, onDelete: () => void }) {
-    // Check if it's a default category (assuming user_id is null for defaults or is_default flag)
-    // But our useCategories logic brings custom and defaults.
-    // We should prefer check if we can delete. 
-    // Let's assume defaults (is_default) cannot be deleted/edited, or check requirements. 
-    // User asked for "create, edit, delete", implying full control over THEIR categories.
-    // Default ones might be locked.
-
-    const isDefault = category.is_default;
 
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="p-4 rounded-xl bg-card border shadow-sm flex items-center justify-between"
-        >
-            <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted/50">
-                    <CategoryIcon name={category.icon} color={category.color} size={24} />
+        <div className="space-y-6 pb-20 lg:pb-0">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-display font-bold">Categorias</h1>
+                    <p className="text-muted-foreground">Gerencie suas categorias de receitas e despesas</p>
                 </div>
-                <span className="font-medium">{category.name}</span>
             </div>
 
-            {!isDefault && (
-                <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={onEdit}>
-                        <Edit2 size={16} className="text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={onDelete} className="hover:text-red-500 hover:bg-red-50">
-                        <Trash2 size={16} />
-                    </Button>
-                </div>
-            )}
-            {isDefault && (
-                <span className="text-xs text-muted-foreground italic px-2">Padrão</span>
-            )}
-        </motion.div>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TransactionType)} className="w-full">
+                <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+                    <TabsTrigger value="expense">Despesas</TabsTrigger>
+                    <TabsTrigger value="income">Receitas</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="expense" className="animate-in fade-in-50">
+                    {isLoading ? <p>Carregando...</p> : <CategoryList list={expenseCategories} />}
+                </TabsContent>
+                <TabsContent value="income" className="animate-in fade-in-50">
+                    {isLoading ? <p>Carregando...</p> : <CategoryList list={incomeCategories} />}
+                </TabsContent>
+            </Tabs>
+
+            {/* Create/Edit Modal */}
+            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSave} className="space-y-4 py-4">
+                        <div>
+                            <label className="text-sm font-medium mb-1.5 block">Nome</label>
+                            <Input
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                placeholder="Ex: Alimentação"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium mb-1.5 block">Ícone</label>
+                            <div className="grid grid-cols-6 gap-2 max-h-40 overflow-y-auto p-2 border rounded-lg">
+                                {AVAILABLE_ICONS.map((ic) => (
+                                    <button
+                                        key={ic}
+                                        type="button"
+                                        onClick={() => setIcon(ic)}
+                                        className={cn(
+                                            "p-2 rounded-lg hover:bg-muted flex items-center justify-center transition-colors",
+                                            icon === ic ? "bg-primary/10 text-primary ring-2 ring-primary ring-offset-1" : "text-muted-foreground"
+                                        )}
+                                    >
+                                        <CategoryIcon name={ic} size={20} />
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium mb-1.5 block">Cor</label>
+                            <div className="flex flex-wrap gap-2">
+                                {AVAILABLE_COLORS.map((c) => (
+                                    <button
+                                        key={c}
+                                        type="button"
+                                        onClick={() => setColor(c)}
+                                        className={cn(
+                                            "w-6 h-6 rounded-full border border-black/10 transition-transform",
+                                            color === c ? "scale-125 ring-2 ring-offset-2 ring-black/50" : "hover:scale-110"
+                                        )}
+                                        style={{ backgroundColor: c }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        <DialogFooter className="pt-4">
+                            <DialogClose asChild>
+                                <Button type="button" variant="ghost">Cancelar</Button>
+                            </DialogClose>
+                            <Button type="submit">{editingCategory ? 'Salvar Alterações' : 'Criar Categoria'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div>
     );
 }

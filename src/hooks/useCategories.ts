@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Category, TransactionType } from '@/types/finance';
-import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 export function useCategories() {
@@ -76,11 +75,6 @@ export function useCategories() {
 
   const deleteCategory = useMutation({
     mutationFn: async (id: string) => {
-      // O banco deve ter ON DELETE RESTRICT ou similar para evitar orfãos, 
-      // ou podemos validar antes. Por simplificação, tentamos deletar.
-      // Se houver transações, o banco (se bem configurado) daria erro.
-      // Caso queira cascade, teria que deletar transações antes (perigoso).
-      // Vamos assumir que o usuário só deleta se não tiver uso ou o banco barra.
       const { error } = await supabase
         .from('categories')
         .delete()
