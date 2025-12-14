@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppLayout } from '@/components/layout/AppLayout';
 import {
     Dialog,
     DialogContent,
@@ -247,42 +248,36 @@ export default function Loans() {
     }
 
     return (
-        <div className="container py-8 space-y-8 animate-fade-in">
-            <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                    <Button
-                        variant="ghost"
-                        className="pl-0 hover:bg-transparent hover:text-primary"
-                        onClick={() => navigate('/dashboard')}
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Voltar ao Dashboard
-                    </Button>
-                    <h1 className="text-3xl font-bold tracking-tight">Empréstimos</h1>
-                    <p className="text-muted-foreground">
-                        Gerencie seus empréstimos e financiamentos.
-                    </p>
+        <AppLayout>
+            <div className="space-y-8 animate-fade-in">
+                <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                        <h1 className="text-3xl font-bold tracking-tight">Empréstimos</h1>
+                        <p className="text-muted-foreground">
+                            Gerencie seus empréstimos e financiamentos.
+                        </p>
+                    </div>
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="gap-2">
+                                <Plus className="h-4 w-4" />
+                                Novo Empréstimo
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                                <DialogTitle>Novo Empréstimo</DialogTitle>
+                                <DialogDescription>
+                                    Cadastre um novo empréstimo ou financiamento para acompanhar.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <LoanForm onSubmit={handleCreateLoan} />
+                        </DialogContent>
+                    </Dialog>
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Novo Empréstimo
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>Novo Empréstimo</DialogTitle>
-                            <DialogDescription>
-                                Cadastre um novo empréstimo ou financiamento para acompanhar.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <LoanForm onSubmit={handleCreateLoan} />
-                    </DialogContent>
-                </Dialog>
-            </div>
 
-            <LoanList loans={loans} onAmortize={handleAmortize} onDelete={handleDeleteLoan} onUpdatePayments={handleUpdatePayments} />
-        </div>
+                <LoanList loans={loans} onAmortize={handleAmortize} onDelete={handleDeleteLoan} onUpdatePayments={handleUpdatePayments} />
+            </div>
+        </AppLayout>
     );
 }
