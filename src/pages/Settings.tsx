@@ -80,6 +80,29 @@ export default function Settings() {
           </div>
         </div>
 
+        <div className="card-finance">
+          <h3 className="font-semibold mb-4">Sobre</h3>
+          <div className="space-y-2">
+            <Link
+              to="/privacy"
+              className="block p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+            >
+              <p className="font-medium">Política de Privacidade</p>
+              <p className="text-xs text-muted-foreground">Como protegemos seus dados</p>
+            </Link>
+            <Link
+              to="/terms"
+              className="block p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+            >
+              <p className="font-medium">Termos de Uso</p>
+              <p className="text-xs text-muted-foreground">Regras de uso do aplicativo</p>
+            </Link>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground text-center">
+            FinanceApp v1.0.0
+          </p>
+        </div>
+
 
         <div className="card-finance border-red-200 bg-red-50/50">
           <div className="flex items-center gap-2 mb-4 text-red-600">
