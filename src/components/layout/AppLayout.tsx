@@ -161,23 +161,28 @@ export function AppLayout({ children }: AppLayoutProps) {
             </ul>
           </nav>
 
-          {/* Premium CTA */}
-          {!isPremium && (
-            <div className="px-4 mb-4">
-              <Link
-                to="/subscription"
-                className="block p-4 rounded-xl gradient-hero text-primary-foreground"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown size={18} />
-                  <span className="font-semibold">Seja Premium</span>
-                </div>
-                <p className="text-sm opacity-90">
-                  Desbloqueie recursos ilimitados
-                </p>
-              </Link>
-            </div>
-          )}
+          {/* Premium CTA / Subscription Management */}
+          <div className="px-4 mb-4">
+            <Link
+              to="/subscription"
+              className={cn(
+                "block p-4 rounded-xl",
+                isPremium
+                  ? "bg-warning/10 border border-warning/20"
+                  : "gradient-hero text-primary-foreground"
+              )}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Crown size={18} className={isPremium ? "text-warning" : ""} />
+                <span className={cn("font-semibold", isPremium ? "text-warning" : "")}>
+                  {isPremium ? "Premium Ativo" : "Seja Premium"}
+                </span>
+              </div>
+              <p className={cn("text-sm", isPremium ? "text-muted-foreground" : "opacity-90")}>
+                {isPremium ? "Gerenciar assinatura" : "Desbloqueie recursos ilimitados"}
+              </p>
+            </Link>
+          </div>
 
           {/* Sign Out */}
           <div className="p-4 border-t border-border">

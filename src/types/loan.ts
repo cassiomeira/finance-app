@@ -20,6 +20,11 @@ export interface LoanInstallment {
   balance: number; // Saldo devedor após pagamento
   status: 'pending' | 'paid' | 'late';
   paidAt?: Date;
+
+  // Detalhes extras para visualização
+  daysElapsed?: number; // Dias corridos desde o último evento
+  balanceBeforePayment?: number; // Saldo + Juros antes do pagamento
+  sourcePayment?: any; // Referência ao objeto de pagamento original
 }
 
 export interface Loan {
@@ -48,4 +53,5 @@ export interface Loan {
 
   createdAt: Date;
   updatedAt: Date;
+  integrate_in_dashboard?: boolean;
 }

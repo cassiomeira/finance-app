@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Crown, ArrowLeft, Loader2, Shield } from 'lucide-react';
+import { Check, Crown, ArrowLeft, Loader2, Shield, Settings } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +14,7 @@ const features = {
 export default function Subscription() {
   const { isPremium, isAdmin } = useProfile();
   const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [searchParams] = useSearchParams();
 
   // Show message based on URL params
@@ -43,6 +44,26 @@ export default function Subscription() {
       toast.error('Erro ao iniciar checkout. Tente novamente.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    setPortalLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-portal-session', {
+        body: { origin: window.location.origin },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.location.href = data.url;
+      }
+    } catch (error: any) {
+      console.error('Portal error:', error);
+      toast.error('Erro ao abrir portal. Tente novamente.');
+    } finally {
+      setPortalLoading(false);
     }
   };
 
@@ -118,7 +139,7 @@ export default function Subscription() {
                 </li>
               ))}
             </ul>
-            <button 
+            <button
               className="w-full btn-finance-primary py-3 flex items-center justify-center gap-2 disabled:opacity-50"
               onClick={handleSubscribe}
               disabled={loading || isPremium}
@@ -134,6 +155,25 @@ export default function Subscription() {
                 'Assinar Premium'
               )}
             </button>
+            {isPremium && !isAdmin && (
+              <button
+                className="w-full mt-3 py-3 rounded-lg border border-border hover:bg-muted flex items-center justify-center gap-2 transition-colors"
+                onClick={handleManageSubscription}
+                disabled={portalLoading}
+              >
+                {portalLoading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Abrindo portal...
+                  </>
+                ) : (
+                  <>
+                    <Settings size={18} />
+                    Gerenciar Assinatura
+                  </>
+                )}
+              </button>
+            )}
           </motion.div>
         </div>
       </div>

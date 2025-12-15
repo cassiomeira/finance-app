@@ -4,6 +4,7 @@ import { Plus, Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TransactionList } from '@/components/transactions/TransactionList';
 import { TransactionForm } from '@/components/transactions/TransactionForm';
+import { MagicInput } from '@/components/transactions/MagicInput';
 import { useTransactions } from '@/hooks/useTransactions';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -11,6 +12,7 @@ import { Transaction } from '@/types/finance';
 
 export default function Transactions() {
   const [showForm, setShowForm] = useState(false);
+  const [initialFormData, setInitialFormData] = useState<any>(null); // State for Magic Input data
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [search, setSearch] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -45,6 +47,12 @@ export default function Transactions() {
   const handleCloseForm = () => {
     setShowForm(false);
     setEditingTransaction(null);
+    setInitialFormData(null);
+  };
+
+  const handleMagicTransaction = (data: any) => {
+    setInitialFormData(data);
+    setShowForm(true);
   };
 
   return (
@@ -73,6 +81,7 @@ export default function Transactions() {
                 <ChevronRight size={18} />
               </button>
             </div>
+            <MagicInput onTransactionGenerated={handleMagicTransaction} />
             <button onClick={() => setShowForm(true)} className="btn-finance-primary">
               <Plus size={20} />
               <span className="hidden sm:inline">Novo Lançamento</span>
@@ -114,7 +123,7 @@ export default function Transactions() {
               type: editingTransaction.type,
               payment_method: editingTransaction.payment_method,
               card_id: editingTransaction.card_id || ''
-            } : undefined}
+            } : initialFormData}
           />
         )}
       </AnimatePresence>

@@ -31,7 +31,9 @@ import {
 } from '@/components/ui/popover';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { calculateLoan } from '@/utils/loanCalculations';
+import { calculateLoan, calculateCustomSchedule } from '@/utils/loanCalculations';
+import { LoanInstallment } from '@/types/loan';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 
 const formSchema = z.object({
@@ -49,17 +51,20 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface LoanFormProps {
-    onSubmit: (data: FormValues) => void;
+    onSubmit: (data: FormValues, overrides?: Record<number, { amount?: number, date?: Date }>, installments?: LoanInstallment[]) => void;
     isLoading?: boolean;
 }
 
 export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
+    // ... preview state ...
     const [preview, setPreview] = useState<{
         totalAmount: number;
         monthlyPayment: number;
     } | null>(null);
 
+    // ... form setup ...
     const form = useForm<FormValues>({
+        // ...
         resolver: zodResolver(formSchema),
         defaultValues: {
             name: '',
@@ -74,43 +79,113 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
         },
     });
 
-    const values = form.watch();
-    const isIndefinite = values.isIndefinite;
+    // Estado para o cronograma personalizado
+    const [installments, setInstallments] = useState<LoanInstallment[]>([]);
+    const [overrides, setOverrides] = useState<Record<number, { amount?: number, date?: Date }>>({});
 
+    // Watch form values for real-time simulation
+    const values = form.watch();
+    const { isIndefinite } = values;
+
+    // Effect to update simulation
     useEffect(() => {
-        if (
-            values.principalAmount > 0 &&
-            (isIndefinite || (values.numberOfInstallments && values.numberOfInstallments > 0))
-        ) {
-            const result = calculateLoan(
-                values.principalAmount,
-                values.interestRate,
-                values.interestPeriod,
-                values.interestType,
-                isIndefinite ? undefined : values.numberOfInstallments,
-                values.startDate
-            );
-            setPreview({
-                totalAmount: result.totalAmount,
-                monthlyPayment: result.monthlyPayment,
-            });
-        } else {
+        try {
+            const { principalAmount, interestRate, interestPeriod, interestType, numberOfInstallments, startDate, isIndefinite } = values;
+
+            // Basic Validation to prevent crash
+            if (!startDate || isNaN(startDate.getTime())) return;
+
+            // Should cast to Number just to be safe from string inputs
+            const principal = Number(principalAmount);
+            const rate = Number(interestRate);
+
+            if (principal > 0 && rate >= 0) {
+                // For borrowed/lent, calculation is the same math
+                if (isIndefinite) {
+                    // Indefinite term
+                    const result = calculateLoan(
+                        principal,
+                        rate,
+                        interestPeriod,
+                        interestType,
+                        0, // 0 months = indefinite
+                        startDate
+                    );
+                    setPreview({
+                        totalAmount: result.totalAmount,
+                        monthlyPayment: result.monthlyPayment
+                    });
+                    setInstallments([]);
+                } else {
+                    const months = Number(numberOfInstallments) || 1;
+
+                    // Calculate base stats
+                    const loanResult = calculateLoan(
+                        principal,
+                        rate,
+                        interestPeriod,
+                        interestType,
+                        months,
+                        startDate
+                    );
+
+                    // Calculate detailed schedule with overrides
+                    const customInstallments = calculateCustomSchedule(
+                        principal,
+                        rate,
+                        startDate,
+                        values.numberOfInstallments,
+                        values.interestType,
+                        values.interestPeriod,
+                        overrides
+                    );
+
+                    setInstallments(customInstallments);
+
+                    // If overrides exist, recalculate totalAmount based on customInstallments
+                    // If NO overrides, we should also ensure consistency? 
+                    // Actually setInstallments updates the view.
+
+                    // Recalculate preview total based on the installments
+                    const total = customInstallments.reduce((acc, curr) => acc + curr.amount, 0);
+                    const firstPayment = customInstallments[0]?.amount || 0;
+
+                    setPreview({
+                        totalAmount: total,
+                        monthlyPayment: firstPayment
+                    });
+
+                }
+            } else {
+                setPreview(null);
+                setInstallments([]);
+            }
+        } catch (error) {
+            console.error("Error calculating loan simulation:", error);
             setPreview(null);
+            setInstallments([]);
         }
-    }, [
-        values.principalAmount,
-        values.interestRate,
-        values.interestPeriod,
-        values.interestType,
-        values.numberOfInstallments,
-        values.startDate,
-        isIndefinite,
-    ]);
+    }, [values.principalAmount, values.interestRate, values.interestPeriod, values.interestType, values.numberOfInstallments, values.startDate, values.isIndefinite, overrides]);
+
+    const handleOverrideChange = (index: number, field: 'amount' | 'date', value: any) => {
+        setOverrides(prev => ({
+            ...prev,
+            [index]: {
+                ...prev[index],
+                [field]: value
+            }
+        }));
+    };
+
+    const handleSubmit = (data: FormValues) => {
+        onSubmit(data, overrides, installments);
+    };
 
     return (
         <div className="grid gap-6 md:grid-cols-2">
             <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                    {/* ... form fields ... */}
                     <FormField
                         control={form.control}
                         name="name"
@@ -370,6 +445,94 @@ export function LoanForm({ onSubmit, isLoading }: LoanFormProps) {
                         )}
                     </CardContent>
                 </Card>
+
+                {installments.length > 0 && !isIndefinite && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-lg">Cronograma de Parcelas</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0 overflow-hidden">
+                            <div className="rounded-md border max-h-[60vh] overflow-auto">
+                                <Table className="min-w-[800px] w-full relative">
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[40px]">#</TableHead>
+                                            <TableHead className="w-[110px]">Vencimento</TableHead>
+                                            <TableHead className="text-center w-[60px]" title="Dias decorridos">Dias</TableHead>
+                                            <TableHead className="text-right">Saldo Devedor</TableHead>
+                                            <TableHead className="text-right">Pagamento</TableHead>
+                                            <TableHead className="text-right text-muted-foreground w-[90px]">Juros</TableHead>
+                                            <TableHead className="text-right">Saldo Final</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {installments.map((inst) => (
+                                            <TableRow key={inst.number}>
+                                                <TableCell className="font-medium">{inst.number}</TableCell>
+                                                <TableCell>
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <Button
+                                                                variant={"ghost"}
+                                                                className={cn(
+                                                                    "w-full justify-start text-left font-normal h-8 px-1 text-xs",
+                                                                    !inst.dueDate && "text-muted-foreground"
+                                                                )}
+                                                            >
+                                                                {inst.dueDate ? (
+                                                                    format(inst.dueDate, "dd/MM/yy", { locale: ptBR })
+                                                                ) : (
+                                                                    <span>Data</span>
+                                                                )}
+                                                            </Button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-auto p-0" align="start">
+                                                            <Calendar
+                                                                mode="single"
+                                                                selected={inst.dueDate}
+                                                                onSelect={(date) => date && handleOverrideChange(inst.number, 'date', date)}
+                                                                initialFocus
+                                                            />
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                </TableCell>
+                                                <TableCell className="text-center text-muted-foreground text-xs">
+                                                    {inst.daysElapsed}d
+                                                </TableCell>
+                                                <TableCell className="text-right text-xs">
+                                                    {new Intl.NumberFormat('pt-BR', {
+                                                        style: 'currency',
+                                                        currency: 'BRL',
+                                                    }).format(inst.balanceBeforePayment || 0)}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-8 w-24 text-right text-xs ml-auto"
+                                                        value={inst.amount.toFixed(2)}
+                                                        onChange={(e) => handleOverrideChange(inst.number, 'amount', Number(e.target.value))}
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="text-right text-muted-foreground text-xs">
+                                                    {new Intl.NumberFormat('pt-BR', {
+                                                        style: 'currency',
+                                                        currency: 'BRL',
+                                                    }).format(inst.interestAmount)}
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium text-xs">
+                                                    {new Intl.NumberFormat('pt-BR', {
+                                                        style: 'currency',
+                                                        currency: 'BRL',
+                                                    }).format(inst.balance)}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </div>
     );

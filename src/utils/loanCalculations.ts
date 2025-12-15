@@ -1,5 +1,5 @@
 import { LoanInstallment, InterestType, InterestPeriod, Loan } from '../types/loan';
-import { addMonths, differenceInDays, differenceInMonths } from 'date-fns';
+import { addMonths, differenceInDays } from 'date-fns';
 
 export const calculateLoan = (
     principal: number,
@@ -88,6 +88,34 @@ export const calculateLoan = (
         }
     }
 
+    // Calcular dias decorridos e saldo parcial para simulação pura
+    // Importante: No caso de simulação inicial, assumimos datas perfeitas
+    let previousDate = startDate;
+    let runningBalance = principal;
+
+    for (let i = 0; i < installments.length; i++) {
+        const inst = installments[i];
+
+        // Recalcular com detalhes extras
+        // Dias
+        const days = differenceInDays(inst.dueDate, previousDate);
+
+        // Juros Pro-Rata (apenas informativo na simulação Price, pois Price usa mensal cheio)
+        // Mas para consistência visual:
+        let interestProRata = 0;
+        if (days > 0 && monthlyRate > 0) {
+            const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
+            interestProRata = runningBalance * (Math.pow(1 + dailyRate, days) - 1);
+        }
+
+        inst.daysElapsed = days;
+        inst.balanceBeforePayment = runningBalance + interestProRata;
+
+        runningBalance = inst.balance; // Price já definiu o saldo final
+        previousDate = inst.dueDate;
+    }
+
+
     return {
         totalAmount,
         monthlyPayment,
@@ -101,14 +129,7 @@ export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date())
         ? Math.pow(1 + loan.interestRate / 100, 1 / 12) - 1
         : loan.interestRate / 100;
 
-    // Calcular juros diários compostos desde o início até hoje
-    // Fórmula: M = P * (1 + i)^n
-    // Onde n é o número de meses (ou fração de meses)
-
-    // Abordagem simplificada: Calcular saldo dia a dia considerando pagamentos
-    // Isso é mais preciso para amortizações irregulares
-
-    let balance = loan.principalAmount;
+    let balance = Number(loan.principalAmount);
     let lastDate = new Date(loan.startDate);
 
     // Validar data
@@ -130,7 +151,7 @@ export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date())
 
         // Taxa diária equivalente
         const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
-        const interest = currentBalance * (Math.pow(1 + dailyRate, days) - 1);
+        const interest = Number(currentBalance) * (Math.pow(1 + dailyRate, days) - 1);
         return interest;
     };
 
@@ -138,14 +159,17 @@ export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date())
     for (const payment of sortedPayments) {
         if (payment.date > currentDate) break; // Pagamentos futuros não contam ainda
 
+        // Skip payments with any note - only null/undefined notes are realized payments
+        if (payment.note) continue;
+
         // Adicionar juros do período anterior até este pagamento
         const interest = addInterest(lastDate, payment.date, balance);
         balance += interest;
         accumulatedInterest += interest;
 
         // Abater pagamento
-        balance -= payment.amount;
-        totalPaid += payment.amount;
+        balance -= Number(payment.amount);
+        totalPaid += Number(payment.amount);
 
         lastDate = payment.date;
     }
@@ -167,280 +191,292 @@ export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date())
 export const calculateDynamicSchedule = (
     loan: Loan,
     payments: { amount: number; date: Date; note?: string }[] = []
-): { installments: LoanInstallment[]; currentBalance: number; totalPaid: number } => {
-    const { principalAmount, interestRate, interestPeriod, interestType, numberOfInstallments, startDate } = loan;
+): { installments: LoanInstallment[]; currentBalance: number; totalPaid: number; monthlyPayment: number } => {
+    const { principalAmount, interestRate, interestPeriod, numberOfInstallments, startDate } = loan;
 
-    // Converter taxa anual para mensal
+    // Converter taxa anual p/ mensal
     let monthlyRate = interestPeriod === 'yearly'
         ? Math.pow(1 + interestRate / 100, 1 / 12) - 1
         : interestRate / 100;
 
-    const installments: LoanInstallment[] = [];
-    let currentBalance = principalAmount;
-    let totalPaid = 0;
-
-    // Ordenar pagamentos
-    const sortedPayments = [...payments].sort((a, b) => a.date.getTime() - b.date.getTime());
-
-    // Se não tem prazo definido, é apenas juros simples/compostos sobre o saldo
+    // Se não tem prazo definido, fluxo simplificado (mantém original)
     if (!numberOfInstallments || numberOfInstallments <= 0) {
-        // Implementação simplificada para prazo indeterminado (mantém lógica anterior mas processa pagamentos)
         const debt = calculateCurrentDebt(loan, new Date());
         return {
             installments: [],
             currentBalance: debt.currentBalance,
-            totalPaid: debt.totalPaid || 0
+            totalPaid: debt.totalPaid || 0,
+            monthlyPayment: 0
         };
     }
 
-    // Para prazo determinado (Tabela Price ou Juros Compostos com parcelas fixas iniciais)
-    // Recalcular fluxo mês a mês
-
-    // 1. Calcular parcela inicial prevista (PMT)
-    let monthlyPayment = 0;
+    // Calcula PMT (Valor da Parcela Tabela Price) para referência visual e default
+    let scheduledPMT = 0;
     if (monthlyRate === 0) {
-        monthlyPayment = principalAmount / numberOfInstallments;
+        scheduledPMT = Number(principalAmount) / numberOfInstallments;
     } else {
-        monthlyPayment = principalAmount * (
+        scheduledPMT = Number(principalAmount) * (
             (monthlyRate * Math.pow(1 + monthlyRate, numberOfInstallments)) /
             (Math.pow(1 + monthlyRate, numberOfInstallments) - 1)
         );
     }
 
-    let balance = principalAmount;
+    const installments: LoanInstallment[] = [];
+    let currentBalance = Number(principalAmount);
+    let totalPaid = 0;
+    let balanceAfterLastPaid = Number(principalAmount); // Track balance after last PAID installment
+
+    // Assegura data válida
+    let validStartDate = new Date(startDate);
+    if (isNaN(validStartDate.getTime())) validStartDate = new Date();
+
+    // Separar pagamentos vinculados (tagged) dos soltos (untagged)
+    const taggedPayments = new Map<number, any>();
+    const untaggedPayments: any[] = [];
+
+    // Pre-process payments
+    [...payments]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .forEach(p => {
+            // Cast to access optional installmentNumber if not in strict type
+            const pAny = p as any;
+            if (pAny.installmentNumber !== undefined && pAny.installmentNumber !== null) {
+                taggedPayments.set(Number(pAny.installmentNumber), p);
+            } else {
+                untaggedPayments.push(p);
+            }
+        });
+
+    let previousDate = validStartDate;
 
     for (let i = 1; i <= numberOfInstallments; i++) {
-        const dueDate = addMonths(startDate, i);
+        // Data de vencimento TEÓRICA desta parcela
+        const dueDate = addMonths(validStartDate, i);
 
-        // Juros do período
-        const interest = balance * monthlyRate;
-
-        // Valor esperado da parcela (pode mudar se houve amortização extra, mas na Price fixa o PMT tenta se manter, 
-        // a menos que recalculemos o PMT a cada mês. Aqui vamos manter o PMT fixo original para referência, 
-        // mas o saldo cai mais rápido com pagamentos extras).
-        // *Melhoria*: Se o saldo cair muito, a parcela de juros diminui, então a amortização aumenta.
-
-        // Verificar pagamentos feitos neste "mês" (até a data de vencimento desta parcela, que não foram usados antes)
-        // Simplificação: Vamos considerar pagamentos "livres". O usuário paga X valor.
-        // Esse valor abate juros acumulados e depois principal.
-
-        // Vamos tentar casar pagamentos com parcelas para status visual
-        // Mas o cálculo financeiro é sobre o saldo devedor.
-
-        let installmentAmount = monthlyPayment;
-        let principalComponent = installmentAmount - interest;
-
-        // Se o saldo for menor que a parcela calculada, ajusta
-        if (balance < principalComponent) {
-            // Ajuste final
-            installmentAmount = balance + interest;
-            principalComponent = balance;
-        }
-
-        // Verificar se essa parcela foi paga
-        // Consideramos "paga" se houver pagamentos suficientes acumulados ou pagamentos específicos perto da data
-        // Para simplificar a UX pedida: "Pagar esta parcela".
-
-        // Vamos buscar se existe um pagamento que "cobre" esta parcela ou foi feito explicitamente para ela.
-        // Como não temos vínculo ID pagamento -> ID parcela no banco, vamos usar datas e valores aproximados ou
-        // simplesmente abater do saldo global e marcar como paga se o saldo remanescente permitir.
-
-        // NOVA ABORDAGEM PEDIDA: "Editar a parcela".
-        // Isso sugere que o usuário quer ver o histórico.
-
-        // Vamos cruzar com os pagamentos reais para definir o status e o valor REAL pago.
-
-        // Encontrar pagamentos neste intervalo (entre vencimento anterior e este)
-        const prevDueDate = addMonths(startDate, i - 1);
-        const paymentsInPeriod = sortedPayments.filter(p =>
-            p.date > prevDueDate && p.date <= addMonths(dueDate, 1) // Tolerância de 1 mês ou lógica de "pagamento referente a X"
-            // Na verdade, o melhor é: O usuário clica em "Pagar parcela 3". Isso cria um pagamento.
-            // Aqui nós apenas lemos. Se houver pagamento, abatemos.
-        );
-
-        // Por enquanto, para manter consistência com a "Price", vamos simular a projeção
-        // E marcar como paga se o saldo tiver sido abatido.
-
-        // *Refinamento*: O usuário quer "Pagar Parcela".
-        // Vamos assumir que se o saldo devedor está diminuindo conforme o esperado, as parcelas estão pagas.
-
-        // Mas para a feature "Pagar Parcela X", o ideal seria ter um vínculo explícito.
-        // Sem mudar o banco (tabela loan_installments), vamos inferir:
-        // Se existe pagamento registrado próximo ao vencimento ou acumulado.
-
-        // Vamos simplificar: O cálculo dinâmico projeta o futuro com base no saldo ATUAL.
-        // O passado é histórico.
-
-        // Se a data da parcela é passado:
-        // Verificamos se houve pagamento suficiente.
-
-        // Se a data é futuro:
-        // Projetamos com base no saldo atual.
-
-        const isPast = dueDate < new Date();
-
-        // Tentar encontrar um pagamento que corresponda a esta parcela (mesmo valor ou data próxima)
-        // Ou simplesmente acumular pagamentos e ir "dando baixa" nas parcelas mais antigas.
-        // Estratégia FIFO de pagamentos.
-
+        let paymentAmount = 0;
+        let effectiveDate = dueDate; // Data considerada para cálculo de juros (pagamento real ou vencimento)
         let status: 'pending' | 'paid' | 'late' = 'pending';
-        let paidDate: Date | undefined;
-        let paidAmount = 0;
+        let paidAt: Date | undefined = undefined;
 
-        // Consumir do pool de pagamentos totais
-        // (Isso assume que pagamentos quitam parcelas em ordem cronológica)
-        const installmentTotalReq = monthlyPayment; // Valor cheio da parcela
+        // Consumir o próximo pagamento disponível
+        let usedPayment = undefined;
 
-        // Total pago acumulado até agora (global)
-        // Precisamos saber quanto do totalPaid já foi "usado" para quitar parcelas anteriores.
-
-        // Vamos refazer o loop apenas para "alocar" pagamentos às parcelas.
-    }
-
-    // RESTART LOGIC: Alocação de Pagamentos FIFO
-    // 1. Temos um pool de pagamentos (sortedPayments).
-    // 2. Temos parcelas teóricas (installments).
-    // 3. Vamos percorrer as parcelas e "gastar" os pagamentos.
-
-    let remainingPayments = sortedPayments.reduce((sum, p) => sum + p.amount, 0);
-    totalPaid = remainingPayments;
-
-    balance = principalAmount; // Reset balance for projection
-
-    const projectedInstallments: LoanInstallment[] = [];
-
-    for (let i = 1; i <= numberOfInstallments; i++) {
-        const dueDate = addMonths(startDate, i);
-        const interest = balance * monthlyRate;
-        let amortization = monthlyPayment - interest;
-
-        // Ajuste se for a última ou saldo pequeno
-        if (balance < amortization + 1) { // +1 margem erro
-            amortization = balance;
+        // 1. Prioridade Absoluta: Pagamento "Taggeado" para esta parcela
+        if (taggedPayments.has(i)) {
+            usedPayment = taggedPayments.get(i);
+        }
+        // 2. Fallback: Fila de pagamentos sem tag (legado/genérico)
+        else if (untaggedPayments.length > 0) {
+            usedPayment = untaggedPayments[0];
+            untaggedPayments.shift();
         }
 
-        const installmentValue = interest + amortization;
+        if (usedPayment) {
+            const nextPayment = usedPayment;
 
-        let thisInstallmentStatus: 'pending' | 'paid' | 'late' = 'pending';
-        let thisInstallmentPaidAt: Date | undefined;
+            // If note exists (any note), it's pending/scheduled. Only null/undefined = paid.
+            const isPending = !!nextPayment.note;
 
-        // Verificar se temos saldo de pagamentos para quitar esta parcela
-        if (remainingPayments >= installmentValue - 0.1) { // Tolerância de centavos
-            thisInstallmentStatus = 'paid';
-            remainingPayments -= installmentValue;
-            balance -= amortization; // Abate do principal
+            // Aceita o pagamento ou override
+            paymentAmount = Number(nextPayment.amount);
+            effectiveDate = new Date(nextPayment.date);
 
-            // Tentar achar a data do pagamento que quitou essa parcela (aproximado)
-            // Pegamos o último pagamento que contribuiu
-            // (Simplificação visual)
-            thisInstallmentPaidAt = sortedPayments.find(p => p.date <= dueDate)?.date || dueDate;
-
-        } else if (remainingPayments > 0) {
-            // Parcialmente paga (na UI vamos mostrar como pendente mas com valor restante menor? 
-            // Ou "Atrasada" se já venceu?)
-            // O usuário pediu "Pagar Parcela".
-            // Vamos considerar 'pending' mas o saldo devedor vai estar menor.
-
-            // Se pagou parcial, abate do saldo o que deu
-            // Mas a parcela continua "em aberto" visualmente ou "parcial"?
-            // Vamos manter 'pending' mas o balance real reflete o pagamento.
-
-            // Abater o que sobrou dos pagamentos do principal (após juros)
-            const paymentToInterest = Math.min(remainingPayments, interest);
-            const paymentToPrincipal = remainingPayments - paymentToInterest;
-
-            balance -= paymentToPrincipal;
-            remainingPayments = 0;
-
-            if (dueDate < new Date()) {
-                thisInstallmentStatus = 'late';
+            if (isPending) {
+                status = 'pending';
+                paidAt = undefined;
+            } else {
+                status = 'paid';
+                paidAt = effectiveDate;
+                totalPaid += paymentAmount;
             }
         } else {
-            // Nada pago para esta parcela
+            // Nenhum pagamento disponível para esta parcela
             if (dueDate < new Date()) {
-                thisInstallmentStatus = 'late';
+                status = 'late';
             }
         }
 
+        // --- CÁLCULO FINANCEIRO ---
 
-        // Se já pagamos tudo (balance zerado), as próximas parcelas somem ou ficam zeradas?
-        // Se for amortização antecipada, o prazo diminui ou o valor diminui?
-        // Na Price, geralmente o prazo diminui se mantiver o valor, ou valor diminui se mantiver prazo.
-        // Vamos assumir que mantemos o prazo e recalculamos o valor das próximas (Recálculo Dinâmico pedido).
+        // 1. Dias Decorridos (Real: data efetiva - data anterior)
+        const daysElapsed = differenceInDays(effectiveDate, previousDate);
 
-        if (thisInstallmentStatus === 'pending' || thisInstallmentStatus === 'late') {
-            // Recalcular PMT para as parcelas restantes com base no saldo ATUAL
-            const remainingMonths = numberOfInstallments - i + 1;
-            if (monthlyRate > 0) {
-                const newPMT = balance * (
-                    (monthlyRate * Math.pow(1 + monthlyRate, remainingMonths)) /
-                    (Math.pow(1 + monthlyRate, remainingMonths) - 1)
-                );
-                // Atualiza o valor base para esta e próximas
-                monthlyPayment = newPMT;
+        // 2. Juros Pro-Rata (baseado no saldo atual)
+        let interest = 0;
+        if (Number(monthlyRate) > 0) {
+            // Garante que daysElapsed é number. differenceInDays retorna number, mas protegemos.
+            const days = isNaN(daysElapsed) ? 30 : daysElapsed;
 
-                // Recalcula componentes desta parcela com novo PMT
-                amortization = newPMT - interest;
-            } else {
-                monthlyPayment = balance / remainingMonths;
-                amortization = monthlyPayment;
+            if (days > 0) {
+                const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
+                interest = Number(currentBalance) * (Math.pow(1 + dailyRate, days) - 1);
             }
         }
 
-        // Determinar saldo final desta parcela para exibição e para o próximo loop
-        let balanceAfter = balance;
+        const balanceBeforePayment = Number(currentBalance) + Number(interest);
 
-        if (thisInstallmentStatus === 'paid') {
-            // Balance já foi decrementado no bloco de pagamento
-            balanceAfter = balance;
-        } else if (thisInstallmentStatus === 'pending') {
-            // Futuro: Simular pagamento (Amortização Padrão)
-            // O saldo DEVE cair para o cálculo do juros do próximo mês
-            balance -= amortization;
-            balanceAfter = balance;
-        } else if (thisInstallmentStatus === 'late') {
-            // Atrasado: Não pagou. Saldo NÃO diminui.
-            // Balance continua cheio.
-            balanceAfter = balance;
+        // 3. Amortização
+        let principalAmortization = 0;
+
+        if (status === 'paid') {
+            // Se pagou, deduz juros do valor pago. O resto abate principal.
+            principalAmortization = paymentAmount - interest;
+        } else if (usedPayment) {
+            // Pagamento costumizado existe mas ainda pendente - usa o valor do usuário
+            principalAmortization = paymentAmount - interest;
+        } else {
+            // Nenhum pagamento customizado - usa o planejado (scheduledPMT).
+            paymentAmount = scheduledPMT;
+            principalAmortization = scheduledPMT - interest;
         }
 
-        // Capture balance for "Current Balance" display (as of today)
-        if (dueDate <= new Date()) {
-            currentBalance = balanceAfter;
-        } else if (i === 1 && dueDate > new Date()) {
-            // If the first installment is in the future, current balance is the initial principal (or balance before first inst)
-            // But we already initialized currentBalance = principalAmount at the start.
-            // However, if we have a down payment or something... 
-            // Let's just keep the initialized value if we haven't passed any due date.
+        let balanceAfter = Number(currentBalance) - principalAmortization;
+
+        // Ajuste fino pra zerar
+        let finalBalance = balanceAfter;
+        if (i === numberOfInstallments && Math.abs(finalBalance) < 10) {
+            finalBalance = 0; // Tolerância maior no final
         }
 
-        projectedInstallments.push({
+        installments.push({
             number: i,
-            dueDate: dueDate,
-            amount: monthlyPayment, // Valor (recalculado ou original)
+            dueDate: effectiveDate, // Mostra data efetiva (paga/agendada) ou vencimento original? O usuário quer override.
+            amount: paymentAmount, // Valor pago (ou agendado)
             interestAmount: interest,
-            principalAmount: amortization,
-            balance: Math.max(0, balanceAfter), // Saldo pós pagamento desta
-            status: thisInstallmentStatus,
-            paidAt: thisInstallmentPaidAt
+            principalAmount: principalAmortization,
+            balance: Math.max(0, finalBalance),
+            status: status,
+            paidAt: paidAt,
+            daysElapsed: daysElapsed,
+            balanceBeforePayment: balanceBeforePayment,
+            sourcePayment: usedPayment
         });
+
+        currentBalance = finalBalance;
+        previousDate = effectiveDate;
+
+        // Track balance after last paid installment
+        if (status === 'paid') {
+            balanceAfterLastPaid = finalBalance;
+        }
     }
 
-    // If no installments have passed, currentBalance should be principalAmount (which it is initialized to).
-    // But wait, we initialized `currentBalance = principalAmount` at line 179.
-    // But inside the loop we used `balance` variable. `currentBalance` variable was unused/shadowed?
-    // Ah, line 179: `let currentBalance = principalAmount;`
-    // Line 210: `let balance = principalAmount;`
-    // The loop uses `balance`.
-    // The return uses `balance` (line 421: `currentBalance: balance`).
-    // So it was returning the final `balance`.
-
-    // We need to return the captured `currentBalance` (which tracks balance at today).
-    // But we need to update `currentBalance` inside the loop.
-
     return {
-        installments: projectedInstallments,
-        currentBalance: currentBalance, // Return the captured balance as of today
-        totalPaid
+        installments,
+        currentBalance: Math.max(0, balanceAfterLastPaid), // Balance after last PAID installment
+        totalPaid,
+        monthlyPayment: scheduledPMT
     };
+};
+
+export const calculateCustomSchedule = (
+    principal: number,
+    rate: number,
+    startDate: Date,
+    months: number,
+    type: InterestType = 'fixed_installment',
+    period: InterestPeriod = 'monthly',
+    overrides: Record<number, { amount?: number, date?: Date }> = {}
+): LoanInstallment[] => {
+    // Converter taxa anual p/ mensal se necessario
+    const monthlyRate = period === 'yearly'
+        ? Math.pow(1 + rate / 100, 1 / 12) - 1
+        : rate / 100;
+
+    let currentBalance = Number(principal);
+    const installments: LoanInstallment[] = [];
+    let previousDate = startDate;
+
+    let defaultPaymentAmount = 0;
+
+    // Calculate default payment based on type (same logic as calculateLoan)
+    if (type === 'compound') {
+        const finalAmount = principal * Math.pow(1 + monthlyRate, months);
+        defaultPaymentAmount = finalAmount / months;
+    } else {
+        // Fixed Installment (Price)
+        if (monthlyRate === 0) {
+            defaultPaymentAmount = principal / months;
+        } else {
+            defaultPaymentAmount = principal * (
+                (monthlyRate * Math.pow(1 + monthlyRate, months)) /
+                (Math.pow(1 + monthlyRate, months) - 1)
+            );
+        }
+    }
+
+    for (let i = 1; i <= months; i++) {
+        const override = overrides[i];
+
+        let dueDate = addMonths(startDate, i);
+        if (override?.date) {
+            dueDate = override.date;
+        }
+
+        const daysElapsed = differenceInDays(dueDate, previousDate);
+
+        let interest = 0;
+        if (daysElapsed > 0 && monthlyRate > 0) {
+            const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
+            interest = Number(currentBalance) * (Math.pow(1 + dailyRate, daysElapsed) - 1);
+        }
+
+        const balanceBeforePayment = Number(currentBalance) + Number(interest);
+
+        let paymentAmount = 0;
+
+        if (override?.amount !== undefined) {
+            paymentAmount = Number(override.amount);
+        } else {
+            paymentAmount = defaultPaymentAmount;
+        }
+
+        let principalAmortization = 0;
+
+        // Logic depends on type? 
+        // For PRICE (fixed_installment), Amortization = Pmt - Interest
+        // For COMPOUND, logic in calculateLoan was:
+        // interestAmount: (totalAmount - principal) / months, 
+        // principalAmount: principal / months
+        // But here we are doing a dynamic simulation day-by-day.
+        // If we want consistency with the "Default" compound calculation which effectively ignores the daily balance for interest calculation (it pre-calculates total),
+        // we might have a drift if we use dynamic daily interest.
+        // However, dynamic is more "real".
+        // Let's stick to standard financial logic: Amortization = Payment - Interest.
+
+        principalAmortization = paymentAmount - interest;
+
+        // Prevent overpaying principal
+        if (Number(currentBalance) - principalAmortization < 0) {
+            // Adjust to pay off exactly
+            principalAmortization = Number(currentBalance);
+            if (override?.amount === undefined) {
+                // If not overridden, adjust payment too
+                paymentAmount = principalAmortization + interest;
+            }
+            // If overridden, we keep paymentAmount and amortization is capped? 
+            // Or we let amortization be what it is (maybe negative meaning overpayment?)
+            // Let's cap amortization at currentBalance.
+        }
+
+        let finalBal = currentBalance - principalAmortization;
+        if (finalBal < 0.01) finalBal = 0;
+
+        installments.push({
+            number: i,
+            dueDate,
+            amount: paymentAmount,
+            interestAmount: interest,
+            principalAmount: principalAmortization,
+            balance: finalBal,
+            status: 'pending',
+            daysElapsed,
+            balanceBeforePayment
+        });
+
+        currentBalance = finalBal;
+        previousDate = dueDate;
+    }
+
+    return installments;
 };

@@ -14,6 +14,7 @@ import Categories from "./pages/Categories";
 import Settings from "./pages/Settings";
 import Loans from "./pages/Loans";
 import Reports from "./pages/Reports";
+import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/categories" element={<Categories />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/subscription" element={<Subscription />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
