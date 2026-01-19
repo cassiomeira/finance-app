@@ -14,7 +14,8 @@ import {
   Crown,
   Wallet,
   BarChart3,
-  Tag
+  Tag,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
@@ -29,6 +30,7 @@ const navItems = [
   { path: '/transactions', icon: Receipt, label: 'Lançamentos' },
   { path: '/cards', icon: CreditCard, label: 'Cartões' },
   { path: '/goals', icon: Target, label: 'Metas' },
+  { path: '/agenda', icon: Calendar, label: 'Agenda' },
   { path: '/reports', icon: BarChart3, label: 'Relatórios' },
   { path: '/loans', icon: Banknote, label: 'Empréstimos' },
   { path: '/categories', icon: Tag, label: 'Categorias' },
