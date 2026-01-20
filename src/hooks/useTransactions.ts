@@ -64,7 +64,7 @@ export function useTransactions(month?: number, year?: number) {
       if (!user?.id) throw new Error('No user');
 
       // 1. Criar a transação normal (registro atual)
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('transactions')
         .insert({
           type: input.type,
@@ -76,7 +76,9 @@ export function useTransactions(month?: number, year?: number) {
           card_id: input.card_id,
           user_id: user.id,
           status: input.status || (input.payment_method === 'credit' ? 'pending' : 'paid') // Default logic
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -100,6 +102,8 @@ export function useTransactions(month?: number, year?: number) {
 
         if (recurringError) throw recurringError;
       }
+
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });

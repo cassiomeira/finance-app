@@ -112,18 +112,26 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
           id: initialData.id,
           ...transactionData
         });
+        toast.success("Lançamento atualizado!");
       } else {
         createdTransaction = await createTransaction.mutateAsync(transactionData);
+        toast.success("Lançamento salvo com sucesso!");
 
         // Auto-create reminder if checked
         if (addToAgenda && type === 'expense' && createdTransaction) {
-          const reminderDate = new Date(`${date}T09:00:00`); // Default to 9 AM
-          await reminderService.add({
-            title: description || 'Conta a Pagar',
-            date: reminderDate,
-            type: 'bill',
-          });
-          toast.success("Lembrete adicionado à agenda!");
+          console.log("Adding to agenda...", { description, date });
+          try {
+            const reminderDate = new Date(`${date}T09:00:00`);
+            await reminderService.add({
+              title: description || 'Conta a Pagar',
+              date: reminderDate,
+              type: 'bill',
+            });
+            toast.success("Lembrete adicionado à agenda!");
+          } catch (err) {
+            console.error("Error adding to agenda:", err);
+            toast.error("Lançamento salvo, mas erro ao criar lembrete na agenda.");
+          }
         }
       }
 
