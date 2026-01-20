@@ -1,6 +1,7 @@
+
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Bell } from 'lucide-react';
 import { useCategories } from '@/hooks/useCategories';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useCreditCards } from '@/hooks/useCreditCards';
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { reminderService } from '@/services/reminderService';
 
 interface TransactionFormProps {
   onClose: () => void;
@@ -45,6 +47,9 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.payment_method || 'cash');
   const [cardId, setCardId] = useState(initialData?.card_id || '');
   const [status, setStatus] = useState<'paid' | 'pending'>(initialData?.status || 'paid');
+
+  // Reminder State
+  const [addToAgenda, setAddToAgenda] = useState(false);
 
   // Update form when initialData changes
   useEffect(() => {
@@ -99,16 +104,34 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
       status,
     };
 
-    if (initialData?.id) {
-      await updateTransaction.mutateAsync({
-        id: initialData.id,
-        ...transactionData
-      });
-    } else {
-      await createTransaction.mutateAsync(transactionData);
-    }
+    try {
+      let createdTransaction;
 
-    onClose();
+      if (initialData?.id) {
+        await updateTransaction.mutateAsync({
+          id: initialData.id,
+          ...transactionData
+        });
+      } else {
+        createdTransaction = await createTransaction.mutateAsync(transactionData);
+
+        // Auto-create reminder if checked
+        if (addToAgenda && type === 'expense' && createdTransaction) {
+          const reminderDate = new Date(`${date}T09:00:00`); // Default to 9 AM
+          await reminderService.add({
+            title: description || 'Conta a Pagar',
+            date: reminderDate,
+            type: 'bill',
+          });
+          toast.success("Lembrete adicionado à agenda!");
+        }
+      }
+
+      onClose();
+    } catch (error) {
+      console.error("Error saving transaction", error);
+      toast.error("Erro ao salvar lançamento");
+    }
   };
 
   return (
@@ -238,6 +261,26 @@ export function TransactionForm({ onClose, defaultType = 'expense', initialData 
               required
             />
           </div>
+
+          {/* Create Reminder Option (Only for new Expenses) */}
+          {type === 'expense' && !initialData?.id && (
+            <div className="p-4 bg-muted/30 rounded-xl border border-border/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-full">
+                  <Bell size={18} />
+                </div>
+                <div className="space-y-0.5">
+                  <Label htmlFor="agenda" className="text-sm font-medium cursor-pointer">Adicionar à Agenda</Label>
+                  <p className="text-xs text-muted-foreground">Criar lembrete para 09:00 deste dia</p>
+                </div>
+              </div>
+              <Switch
+                id="agenda"
+                checked={addToAgenda}
+                onCheckedChange={setAddToAgenda}
+              />
+            </div>
+          )}
 
           {/* Recurring Option */}
           <div className="p-4 bg-muted/50 rounded-xl space-y-4 border border-border/50">

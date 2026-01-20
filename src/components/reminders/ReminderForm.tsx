@@ -6,9 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { reminderService } from "@/services/reminderService";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Mic, MicOff } from "lucide-react";
 import { Reminder } from "@/types/reminder";
 import { format } from "date-fns";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { cn } from "@/lib/utils";
 
 interface ReminderFormProps {
     onSuccess: () => void;
@@ -25,6 +27,14 @@ export function ReminderForm({ onSuccess, editingReminder, onClose, trigger, sho
     const [date, setDate] = useState("");
     const [time, setTime] = useState("");
     const [type, setType] = useState<"personal" | "bill">("personal");
+
+    const { isListening, transcript, startListening, stopListening, hasSupport } = useSpeechRecognition();
+
+    useEffect(() => {
+        if (transcript) {
+            setTitle(transcript);
+        }
+    }, [transcript]);
 
     useEffect(() => {
         if (editingReminder) {
@@ -83,6 +93,15 @@ export function ReminderForm({ onSuccess, editingReminder, onClose, trigger, sho
         }
     };
 
+    const handleMicClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (isListening) {
+            stopListening();
+        } else {
+            startListening();
+        }
+    }
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             {showTrigger && !editingReminder && (
@@ -101,12 +120,30 @@ export function ReminderForm({ onSuccess, editingReminder, onClose, trigger, sho
                 <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                     <div className="space-y-2">
                         <Label>Título</Label>
-                        <Input
-                            value={title}
-                            onChange={e => setTitle(e.target.value)}
-                            placeholder="Ex: Comprar leite"
-                            required
-                        />
+                        <div className="relative">
+                            <Input
+                                value={title}
+                                onChange={e => setTitle(e.target.value)}
+                                placeholder="Ex: Comprar leite"
+                                required
+                                className="pr-10"
+                            />
+                            {hasSupport && (
+                                <button
+                                    type="button"
+                                    onClick={handleMicClick}
+                                    className={cn(
+                                        "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition-all",
+                                        isListening
+                                            ? "bg-red-100 text-red-600 animate-pulse"
+                                            : "hover:bg-muted text-muted-foreground"
+                                    )}
+                                    title="Falar lembrete"
+                                >
+                                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
