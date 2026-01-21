@@ -10,22 +10,28 @@ export function BotStatusConfig() {
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
 
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
     // Determines API URL (Environment Aware)
     const getApiUrl = () => import.meta.env.VITE_API_URL || 'http://localhost:3005';
 
     const checkStatus = async () => {
         setLoading(true);
+        setErrorMsg(null);
         try {
-            const response = await fetch(`${getApiUrl()}/api/status`);
-            if (!response.ok) throw new Error('Falha na conexão');
+            const url = getApiUrl();
+            console.log("Checking Bot Status at:", url);
+
+            const response = await fetch(`${url}/api/status`);
+            if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
 
             const data = await response.json();
             setStatus(data.status);
             setQrCode(data.qr);
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
             setStatus('disconnected');
-            // toast.error("Não foi possível conectar ao Bot");
+            setErrorMsg(error.message || "Erro desconhecido");
         } finally {
             setLoading(false);
         }
@@ -72,17 +78,26 @@ export function BotStatusConfig() {
                 <div className="flex flex-col items-center justify-center py-6 space-y-4">
 
                     {/* STATUS INDICATOR */}
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                        Status atual:
-                        <span className={`px-2 py-1 rounded-full text-xs uppercase ${status === 'ready' || status === 'authenticated' ? 'bg-green-100 text-green-700' :
+                    <div className="flex flex-col items-center gap-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                            Status atual:
+                            <span className={`px-2 py-1 rounded-full text-xs uppercase ${status === 'ready' || status === 'authenticated' ? 'bg-green-100 text-green-700' :
                                 status === 'scan_qr' ? 'bg-yellow-100 text-yellow-700' :
                                     'bg-red-100 text-red-700'
-                            }`}>
-                            {status === 'scan_qr' ? 'Aguardando Leitura' :
-                                status === 'ready' ? 'Pronto para uso' :
-                                    status === 'authenticated' ? 'Autenticado' :
-                                        'Desconectado / Iniciando'}
-                        </span>
+                                }`}>
+                                {status === 'scan_qr' ? 'Aguardando Leitura' :
+                                    status === 'ready' ? 'Pronto para uso' :
+                                        status === 'authenticated' ? 'Autenticado' :
+                                            'Desconectado / Iniciando'}
+                            </span>
+                        </div>
+                        {status === 'disconnected' && errorMsg && (
+                            <p className="text-xs text-red-500 font-mono bg-red-50 p-1 rounded max-w-full break-all text-center">
+                                {errorMsg}
+                                <br />
+                                <span className="text-[10px] text-gray-500">URL: {getApiUrl()}</span>
+                            </p>
+                        )}
                     </div>
 
                     {/* QR CODE DISPLAY */}
