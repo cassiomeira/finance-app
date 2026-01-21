@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2, Upload } from "lucide-react";
+import { BotStatusConfig } from "./BotStatusConfig";
 
 export function PurchasesBoard() {
     const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -183,6 +184,10 @@ export function PurchasesBoard() {
 
     return (
         <div className="h-full flex flex-col gap-4">
+            <div className="flex items-center justify-between px-4 pt-2">
+                <h2 className="text-lg font-bold">Gestão de Compras</h2>
+                <BotStatusConfig />
+            </div>
             <ScrollArea className="w-full whitespace-nowrap rounded-md border">
                 <div className="flex w-max space-x-4 p-4">
                     {clients.map(client => {

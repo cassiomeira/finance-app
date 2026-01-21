@@ -16,13 +16,24 @@ import multer from 'multer';
 dotenv.config();
 dotenv.config({ path: '.env.local' });
 
-// --- API SERVER SETUP (For Frontend "Magic Read") ---
+// --- API SERVER SETUP (For Frontend "Magic Read" & QR) ---
 const app = express();
 const port = 3005;
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Global State for Bot Status
+let latestQr = null;
+let clientStatus = 'initializing'; // initializing, scan_qr, ready, disconnected
+
 app.use(cors());
 app.use(express.json());
+
+app.get('/api/status', (req, res) => {
+    res.json({
+        status: clientStatus,
+        qr: latestQr
+    });
+});
 
 app.post('/api/analyze', upload.single('file'), async (req, res) => {
     try {
@@ -844,6 +855,31 @@ _Use o App para ver detalhes._`;
             await client.sendMessage(msg.from, "❌ Erro ao salvar no banco.");
         }
     }
+});
+
+client.on('qr', (qr) => {
+    console.log('QR RECEIVED', qr);
+    qrcode.generate(qr, { small: true });
+    latestQr = qr;
+    clientStatus = 'scan_qr';
+});
+
+client.on('ready', () => {
+    console.log('Client is ready!');
+    latestQr = null;
+    clientStatus = 'ready';
+});
+
+client.on('authenticated', () => {
+    console.log('Client is authenticated!');
+    latestQr = null;
+    clientStatus = 'authenticated';
+});
+
+client.on('disconnected', (reason) => {
+    console.log('Client was disconnected', reason);
+    latestQr = null;
+    clientStatus = 'disconnected';
 });
 
 client.initialize();
