@@ -141,8 +141,14 @@ export function PurchasesBoard() {
             const formData = new FormData();
             formData.append('file', file);
 
-            // Change invalid port if necessary. Using 3005 as configured in bot.
-            const response = await fetch('http://localhost:3005/api/analyze', {
+            // Determine API URL based on environment
+            // If VITE_API_URL is set (e.g. via .env), use it.
+            // Otherwise, if running locally, try localhost.
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3005';
+
+            console.log("Using API URL:", apiUrl);
+
+            const response = await fetch(`${apiUrl}/api/analyze`, {
                 method: 'POST',
                 body: formData
             });

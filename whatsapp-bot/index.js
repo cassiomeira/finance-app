@@ -87,7 +87,16 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process', // <- this one doesn't always work on Windows, but is needed for some UNIX containers. Let's keep it standard.
+            '--disable-gpu'
+        ]
     }
 });
 // Initialize WhatsApp Client already declared above
