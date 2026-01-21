@@ -27,3 +27,10 @@ dist-ssr
 .env.development.local
 .env.test.local
 .env.production.local
+
+# WhatsApp Bot
+whatsapp-bot/.wwebjs_auth
+whatsapp-bot/.env
+whatsapp-bot/.env.local
+whatsapp-bot/node_modules
+whatsapp-bot/logs

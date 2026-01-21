@@ -1,0 +1,21 @@
+{
+  "name": "finance-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp para Finanças",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.1.3",
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "pdf-parse": "^2.4.5",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.34.4"
+  }
+}

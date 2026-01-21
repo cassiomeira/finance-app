@@ -11,6 +11,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PurchasesBoard } from "@/components/reminders/PurchasesBoard";
 
 export default function Agenda() {
     const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -178,77 +180,89 @@ export default function Agenda() {
                     <p className="text-muted-foreground">Gerencie seus post-its e contas.</p>
                 </header>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <Tabs defaultValue="agenda" className="w-full">
+                    <TabsList className="mb-4">
+                        <TabsTrigger value="agenda">Agenda & Lembretes</TabsTrigger>
+                        <TabsTrigger value="compras">🛒 Compras & Pedidos</TabsTrigger>
+                    </TabsList>
 
-                    {/* Voice Card */}
-                    {hasSupport && (
-                        <div
-                            onClick={handleVoiceCardClick}
-                            className={cn(
-                                "cursor-pointer group relative overflow-hidden rounded-xl border-0 bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600 p-6 flex flex-col justify-between min-h-[160px] shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]",
-                                isListening && "ring-4 ring-violet-300/50 animate-pulse"
-                            )}
-                        >
-                            <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
-                                <Sparkles size={64} className="text-white" />
-                            </div>
+                    <TabsContent value="agenda">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                            {/* Voice Card */}
+                            {hasSupport && (
+                                <div
+                                    onClick={handleVoiceCardClick}
+                                    className={cn(
+                                        "cursor-pointer group relative overflow-hidden rounded-xl border-0 bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600 p-6 flex flex-col justify-between min-h-[160px] shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02]",
+                                        isListening && "ring-4 ring-violet-300/50 animate-pulse"
+                                    )}
+                                >
+                                    <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
+                                        <Sparkles size={64} className="text-white" />
+                                    </div>
 
-                            <div className={cn(
-                                "w-12 h-12 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-sm text-white mb-4 transition-all",
-                                isListening && "bg-white text-violet-600 scale-110"
-                            )}>
-                                {isProcessingVoice && !isListening ? <Loader2 className="animate-spin" size={24} /> : <Mic size={24} />}
-                            </div>
+                                    <div className={cn(
+                                        "w-12 h-12 rounded-full flex items-center justify-center bg-white/20 backdrop-blur-sm text-white mb-4 transition-all",
+                                        isListening && "bg-white text-violet-600 scale-110"
+                                    )}>
+                                        {isProcessingVoice && !isListening ? <Loader2 className="animate-spin" size={24} /> : <Mic size={24} />}
+                                    </div>
 
-                            <div className="z-10">
-                                <h3 className="text-white font-bold text-lg leading-tight mb-1">
-                                    {isListening ? "Ouvindo..." : (isProcessingVoice ? "Criando..." : "IA Magic")}
-                                </h3>
-                                <p className="text-white/80 text-xs font-medium">
-                                    {isListening ? "Fale seu lembrete..." : (isProcessingVoice ? "Aguarde..." : "Criar por voz")}
-                                </p>
-                            </div>
+                                    <div className="z-10">
+                                        <h3 className="text-white font-bold text-lg leading-tight mb-1">
+                                            {isListening ? "Ouvindo..." : (isProcessingVoice ? "Criando..." : "IA Magic")}
+                                        </h3>
+                                        <p className="text-white/80 text-xs font-medium">
+                                            {isListening ? "Fale seu lembrete..." : (isProcessingVoice ? "Aguarde..." : "Criar por voz")}
+                                        </p>
+                                    </div>
 
-                            {transcript && isListening && (
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/20 backdrop-blur-md p-2 text-white/90 text-[10px] truncate">
-                                    "{transcript}"
+                                    {transcript && isListening && (
+                                        <div className="absolute bottom-0 left-0 right-0 bg-black/20 backdrop-blur-md p-2 text-white/90 text-[10px] truncate">
+                                            "{transcript}"
+                                        </div>
+                                    )}
                                 </div>
                             )}
+
+                            {/* Standard Add Button */}
+                            <ReminderForm
+                                onSuccess={loadReminders}
+                                trigger={
+                                    <Button variant="outline" className="h-full min-h-[160px] border-dashed border-2 flex flex-col items-center justify-center gap-3 hover:bg-muted/50 whitespace-normal bg-card/50">
+                                        <div className="p-3 bg-muted rounded-full">
+                                            <Plus size={24} className="text-muted-foreground" />
+                                        </div>
+                                        <span className="text-muted-foreground font-medium">Novo Manual</span>
+                                    </Button>
+                                }
+                            />
+
+                            {/* Reminders List */}
+                            {reminders.map(reminder => (
+                                <ReminderItem
+                                    key={reminder.id}
+                                    reminder={reminder}
+                                    onToggle={handleToggle}
+                                    onDelete={handleDelete}
+                                    onEdit={handleEdit}
+                                />
+                            ))}
+
                         </div>
-                    )}
 
-                    {/* Standard Add Button */}
-                    <ReminderForm
-                        onSuccess={loadReminders}
-                        trigger={
-                            <Button variant="outline" className="h-full min-h-[160px] border-dashed border-2 flex flex-col items-center justify-center gap-3 hover:bg-muted/50 whitespace-normal bg-card/50">
-                                <div className="p-3 bg-muted rounded-full">
-                                    <Plus size={24} className="text-muted-foreground" />
-                                </div>
-                                <span className="text-muted-foreground font-medium">Novo Manual</span>
-                            </Button>
-                        }
-                    />
-
-                    {/* Reminders List */}
-                    {reminders.map(reminder => (
-                        <ReminderItem
-                            key={reminder.id}
-                            reminder={reminder}
-                            onToggle={handleToggle}
-                            onDelete={handleDelete}
-                            onEdit={handleEdit}
+                        <ReminderForm
+                            onSuccess={loadReminders}
+                            editingReminder={editingReminder}
+                            onClose={handleEditClose}
+                            showTrigger={false}
                         />
-                    ))}
+                    </TabsContent>
 
-                </div>
-
-                <ReminderForm
-                    onSuccess={loadReminders}
-                    editingReminder={editingReminder}
-                    onClose={handleEditClose}
-                    showTrigger={false}
-                />
+                    <TabsContent value="compras">
+                        <PurchasesBoard />
+                    </TabsContent>
+                </Tabs>
             </div>
         </AppLayout>
     );
