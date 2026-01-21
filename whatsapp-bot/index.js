@@ -105,8 +105,26 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // <- this one doesn't always work on Windows, but is needed for some UNIX containers. Let's keep it standard.
-            '--disable-gpu'
+            '--single-process',
+            '--disable-gpu',
+            '--disable-extensions',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-default-apps',
+            '--mute-audio',
+            '--no-default-browser-check',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-features=Translate,TranslateUI,site-per-process',
+            '--disable-hang-monitor',
+            '--disable-ipc-flooding-protection',
+            '--disable-notifications',
+            '--disable-renderer-backgrounding',
+            '--disable-sync',
+            '--force-color-profile=srgb',
+            '--metrics-recording-only',
+            '--safebrowsing-disable-auto-update',
+            '--password-store=basic',
+            '--use-mock-keychain'
         ]
     }
 });
