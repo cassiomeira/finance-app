@@ -1,44 +1,22 @@
-FROM ghcr.io/puppeteer/puppeteer:latest
+FROM node:18-bullseye
 
-USER root
-
-# Install dependencies for running Puppeteer (Chrome)
-# The base image already has most, but we ensure compat
+# Install Google Chrome Stable and dependencies
 RUN apt-get update && apt-get install -y \
-    fonts-liberation \
-    gconf-service \
-    libasound2 \
-    libatk1.0-0 \
-    libcairo2 \
-    libcups2 \
-    libfontconfig1 \
-    libgbm-dev \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libicu-dev \
-    libjpeg-dev \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libpng-dev \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    xdg-utils
+    wget \
+    gnupg \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+      --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
-WORKDIR /usr/src/app
+WORKDIR /app
+
+# Set Environment Variable for Puppeteer
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Copy package files
 COPY package*.json ./
@@ -49,8 +27,14 @@ RUN npm install
 # Copy app source
 COPY . .
 
-# Expose port (if needed for API)
-EXPOSE 3005
+# Change ownership to the existing 'node' user (UID 1000)
+RUN chown -R node:node /app
+
+# Switch to non-root user 'node'
+USER node
+
+# Expose port (default HF)
+EXPOSE 7860
 
 # Start the bot
 CMD [ "node", "index.js" ]

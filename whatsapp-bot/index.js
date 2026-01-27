@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+// const pdf = require('pdf-parse'); // Disabled for Hugging Face stability
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
@@ -18,7 +18,8 @@ dotenv.config({ path: '.env.local' });
 
 // --- API SERVER SETUP (For Frontend "Magic Read" & QR) ---
 const app = express();
-const port = 3005;
+// Hugging Face Spaces exposes PORT env var (usually 7860)
+const port = process.env.PORT || 3005;
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Global State for Bot Status
@@ -94,10 +95,36 @@ function saveWhitelist(list) {
 }
 
 // Initialize WhatsApp Client
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
+console.log("🐛 DEBUG: PUPPETEER_EXECUTABLE_PATH =", process.env.PUPPETEER_EXECUTABLE_PATH);
+
+// Network Health Check
+(async () => {
+    try {
+        console.log("🌐 Testando conectividade de rede...");
+        const res = await fetch("https://google.com");
+        console.log(`✅ Rede OK! Status Google: ${res.status}`);
+    } catch (e) {
+        console.error("❌ ERRO GRAVE DE REDE: O container não tem acesso à internet!", e);
+    }
+})();
+
+const isWindows = process.platform === 'win32';
+console.log(`🖥️ Sistema detectado: ${process.platform} (${isWindows ? 'Windows' : 'Linux/Other'})`);
+
+const puppeteerConfig = isWindows
+    ? {
+        // Configuração Windows (Local)
+        headless: false,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+        ]
+    }
+    : {
+        // Configuração Linux (Docker/Cloud)
         headless: true,
+        ignoreHTTPSErrors: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -105,7 +132,7 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
+            '--single-process', // CRÍTICO: Causa erro no Windows, necessário no Linux
             '--disable-gpu',
             '--disable-extensions',
             '--disable-component-extensions-with-background-pages',
@@ -114,7 +141,11 @@ const client = new Client({
             '--no-default-browser-check',
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
-            '--disable-features=Translate,TranslateUI,site-per-process',
+            '--disable-features=Translate,TranslateUI,site-per-process,IsolateOrigins',
+            '--disable-site-isolation-trials',
+            '--disable-web-security',
+            '--dns-prefetch-disable',
+            '--disable-ipv6',
             '--disable-hang-monitor',
             '--disable-ipc-flooding-protection',
             '--disable-notifications',
@@ -124,12 +155,142 @@ const client = new Client({
             '--metrics-recording-only',
             '--safebrowsing-disable-auto-update',
             '--password-store=basic',
-            '--use-mock-keychain'
+            '--use-mock-keychain',
+            '--proxy-server="direct://"',
+            '--proxy-bypass-list=*',
+            '--dns-server=8.8.8.8,1.1.1.1'
         ]
-    }
+    };
+
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: puppeteerConfig,
+    webVersionCache: { type: 'none' }
 });
 // Initialize WhatsApp Client already declared above
 // Client initialization was duplicated in previous step, removing it here.
+
+// --- HELPER: SEND PURCHASE NOTIFICATION ---
+async function sendPurchaseNotification(data, chatIdOverwrite = null) {
+    if (!data.requester && !chatIdOverwrite) return;
+
+    const chatId = chatIdOverwrite || data.requester;
+    let message = '';
+
+    // Message Templates
+    if (data.status === 'waiting') {
+        message = `🚚 *ATUALIZAÇÃO DE COMPRA #${data.friendly_id || '?'}*
+📦 *Item:* ${data.item}
+🏢 *Comprador:* ${data.client}
+🏪 *Fornecedor:* ${data.supplier || 'Não informado'}
+🔢 *Qtd:* ${data.quantity || 1}
+💲 *Valor:* R$ ${data.amount ? data.amount.toFixed(2) : '0,00'}
+
+✅ *COMPRA EFETUADA!* 
+Estamos aguardando a chegada. Avisaremos aqui!`;
+    } else if (data.status === 'completed') {
+        message = `✅ *ENTREGA CONFIRMADA #${data.friendly_id || '?'}*
+📦 *Item:* ${data.item}
+🏢 *Comprador:* ${data.client}
+🏪 *Fornecedor:* ${data.supplier || 'Não informado'}
+
+🔢 *Recebido:* ${data.received_quantity || data.quantity || '?'} / ${data.quantity || '?'}
+${data.observation ? `📝 *Obs:* _"${data.observation}"_` : ''}
+
+O produto já chegou e está disponível! 🚀`;
+    }
+
+    if (message) {
+        try {
+            let media = null;
+            // 1. Download Media if exists
+            if (data.receipt_url) {
+                try {
+                    console.log('Baixando comprovante:', data.receipt_url);
+                    media = await MessageMedia.fromUrl(data.receipt_url);
+                } catch (e) {
+                    console.error("Erro baixando media:", e);
+                }
+            }
+
+            // 2. Send Message
+            if (media) {
+                await client.sendMessage(chatId, media, { caption: message });
+            } else {
+                await client.sendMessage(chatId, message);
+            }
+            console.log(`✅ Notificação enviada para ${chatId}`);
+
+            // 3. Create Transaction (Only if status changed to waiting and verified data)
+            // THIS SHOULD ONLY RUN ON STATUS CHANGE, NOT ON RESEND
+            // logic moved to caller
+        } catch (e) {
+            console.error("Erro enviando notificação:", e);
+        }
+    }
+}
+
+// --- BATCH NOTIFICATION CACHE ---
+const batchCache = {}; // { batchId: { timer: Timeout, items: [] } }
+
+async function processBatch(batchId) {
+    if (!batchCache[batchId]) return;
+
+    const { items } = batchCache[batchId];
+    delete batchCache[batchId]; // Clear cache immediately to prevent double sends
+
+    if (items.length === 0) return;
+
+    // Sort by friendly_id
+    items.sort((a, b) => (a.friendly_id || 0) - (b.friendly_id || 0));
+
+    const firstItem = items[0];
+    const chatId = firstItem.requester || process.env.WHATSAPP_GROUP_ID;
+
+    // Determine Type (Buy or Receive) based on first item status
+    const isWaiting = firstItem.status === 'waiting';
+    const isCompleted = firstItem.status === 'completed';
+
+    let message = '';
+    const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
+
+    if (isWaiting) {
+        message = `🚚 *ATUALIZAÇÃO DE PEDIDO (LOTE)*
+📦 *Itens Comprados:*
+${items.map(item => `- ${item.quantity || 1}x ${item.item} (#${item.friendly_id})`).join('\n')}
+
+🏢 *Comprador:* ${firstItem.client}
+🏪 *Fornecedor:* ${firstItem.supplier || 'Múltiplos'}
+💰 *Total do Lote:* R$ ${totalAmount.toFixed(2)}
+
+✅ *COMPRA EFETUADA!* 
+Estamos aguardando a chegada. Avisaremos aqui!`;
+    } else if (isCompleted) {
+        message = `✅ *ENTREGA CONFIRMADA (LOTE)*
+📦 *Itens Recebidos:*
+${items.map(item => `- ${item.item} (${item.received_quantity || item.quantity}/${item.quantity})`).join('\n')}
+
+${items.some(i => i.observation) ? `📝 *Obs:* Verifique detalhes no sistema.` : ''}
+
+Todos os produtos deste lote chegaram! 🚀`;
+    }
+
+    if (message && chatId) {
+        try {
+            // Use receipt from the first item (assuming batch shares receipt)
+            const receiptUrl = firstItem.receipt_url;
+            if (receiptUrl) {
+                const media = await MessageMedia.fromUrl(receiptUrl);
+                await client.sendMessage(chatId, media, { caption: message });
+            } else {
+                await client.sendMessage(chatId, message);
+            }
+            console.log(`✅ Notificação em LOTE enviada para ${chatId} (${items.length} itens)`);
+        } catch (e) {
+            console.error("Erro enviando lote:", e);
+        }
+    }
+}
 
 // --- REALTIME LISTENER ---
 supabase
@@ -146,97 +307,68 @@ supabase
             const newData = payload.new;
             const oldData = payload.old;
 
-            // Check if Status Changed
-            if (newData.status !== oldData.status && newData.requester) {
-                const chatId = newData.requester;
-                let message = '';
+            // Trigger 1: Status Changed
+            const statusChanged = newData.status !== oldData.status;
 
-                if (newData.status === 'waiting') {
-                    message = `🚚 *ATUALIZAÇÃO DE COMPRA #${newData.friendly_id || '?'}*
-📦 *Item:* ${newData.item}
-🏢 *Comprador:* ${newData.client}
-🏪 *Fornecedor:* ${newData.supplier || 'Não informado'}
-🔢 *Qtd:* ${newData.quantity || 1}
-💲 *Valor:* R$ ${newData.amount ? newData.amount.toFixed(2) : '0,00'}
+            // Trigger 2: Manual Notification Request (timestamp changed)
+            const manualTrigger = newData.last_notification_request !== oldData.last_notification_request;
 
-✅ *COMPRA EFETUADA!* 
-Estamos aguardando a chegada. Avisaremos aqui!`;
-                } else if (newData.status === 'completed') {
-                    message = `✅ *ENTREGA CONFIRMADA #${newData.friendly_id || '?'}*
-📦 *Item:* ${newData.item}
-🏢 *Comprador:* ${newData.client}
-🏪 *Fornecedor:* ${newData.supplier || 'Não informado'}
+            if ((statusChanged || manualTrigger) && newData.requester) {
 
-🔢 *Recebido:* ${newData.received_quantity || newData.quantity || '?'} / ${newData.quantity || '?'}
-${newData.observation ? `📝 *Obs:* _"${newData.observation}"_` : ''}
+                // BATCH LOGIC
+                if (newData.batch_id) {
+                    console.log(`📦 Item de Lote detectado: ${newData.item} (Batch: ${newData.batch_id})`);
 
-O produto já chegou e está disponível! 🚀`;
+                    if (!batchCache[newData.batch_id]) {
+                        batchCache[newData.batch_id] = {
+                            items: [],
+                            timer: setTimeout(() => processBatch(newData.batch_id), 4000) // Wait 4 seconds for all items
+                        };
+                    } else {
+                        // Reset timer if new item comes in (debounce)
+                        clearTimeout(batchCache[newData.batch_id].timer);
+                        batchCache[newData.batch_id].timer = setTimeout(() => processBatch(newData.batch_id), 4000);
+                    }
+
+                    // Avoid duplicates
+                    if (!batchCache[newData.batch_id].items.find(i => i.id === newData.id)) {
+                        batchCache[newData.batch_id].items.push(newData);
+                    }
+                } else {
+                    // LEGACY / SINGLE ITEM LOGIC
+                    await sendPurchaseNotification(newData);
                 }
 
-                if (message) {
+                // Transaction Creation Logic (ONLY ON STATUS CHANGE TO WAITING)
+                if (statusChanged && newData.status === 'waiting') {
                     try {
-                        let media = null;
-                        // 1. Download Media if exists
-                        if (newData.receipt_url) {
-                            try {
-                                console.log('Baixando comprovante:', newData.receipt_url);
-                                media = await MessageMedia.fromUrl(newData.receipt_url);
-                            } catch (e) {
-                                console.error("Erro baixando media:", e);
-                            }
+                        const installments = newData.installments || 1;
+                        const amount = newData.amount;
+                        const buyDate = new Date(newData.purchase_date || new Date());
+                        const categoryId = '50e051dd-444f-47dc-9a91-4d7690a2be29'; // Default/Outros
+
+                        console.log(`💸 Criando transação baseada no pedido (Verified): ${amount} em ${installments}x`);
+
+                        for (let i = 0; i < installments; i++) {
+                            const dueDate = new Date(buyDate);
+                            dueDate.setMonth(buyDate.getMonth() + i);
+
+                            const amountPerInst = amount / installments;
+
+                            await supabase.from('transactions').insert({
+                                type: 'expense',
+                                amount: amountPerInst,
+                                description: `${newData.item} (${i + 1}/${installments}) #${newData.friendly_id}`,
+                                date: dueDate.toISOString().split('T')[0],
+                                category_id: categoryId,
+                                payment_method: 'credit',
+                                status: 'paid',
+                                user_id: process.env.USER_ID,
+                                purchase_id: newData.id
+                            });
                         }
-
-                        // 2. Create Transaction & Update Message (Verified Data)
-                        if (newData.status === 'waiting') {
-                            const installments = newData.installments || 1;
-                            const amount = newData.amount;
-                            const buyDate = new Date(newData.purchase_date || new Date());
-                            const categoryId = '50e051dd-444f-47dc-9a91-4d7690a2be29'; // Default/Outros
-
-                            console.log(`💸 Criando transação baseada no pedido (Verified): ${amount} em ${installments}x`);
-
-                            for (let i = 0; i < installments; i++) {
-                                const dueDate = new Date(buyDate);
-                                dueDate.setMonth(buyDate.getMonth() + i);
-
-                                const amountPerInst = amount / installments;
-
-                                await supabase.from('transactions').insert({
-                                    type: 'expense',
-                                    amount: amountPerInst,
-                                    description: `${newData.item} (${i + 1}/${installments}) #${newData.friendly_id}`,
-                                    date: dueDate.toISOString().split('T')[0],
-                                    category_id: categoryId,
-                                    payment_method: 'credit',
-                                    status: 'paid',
-                                    user_id: process.env.USER_ID,
-                                    purchase_id: newData.id
-                                });
-                            }
-
-                            const freight = newData.freight ? newData.freight : 0;
-                            const installmentValue = (amount / installments).toFixed(2);
-
-                            message += `\n\n✨ *Lançamento Automático:*
-💰 *Total:* R$ ${amount.toFixed(2)}
-${freight > 0 ? `🚚 *Frete:* R$ ${freight.toFixed(2)}\n` : ''}📅 *Data:* ${buyDate.toISOString().split('T')[0]}
-💳 *Pagamento:* ${installments}x de R$ ${installmentValue}`;
-                        }
-
-                        // 3. Send Notification
-                        // 3. Send Notification
-                        // Use requester ID from purchase data, or fallback to fixed group
-                        const chatId = newData.requester || process.env.WHATSAPP_GROUP_ID || '120363388753238692@g.us';
-                        if (media) {
-                            await client.sendMessage(chatId, media, { caption: message });
-                            console.log(`Notificação com Mídia enviada para ${chatId}`);
-                        } else {
-                            await client.sendMessage(chatId, message);
-                            console.log(`Notificação Texto enviada para ${chatId}`);
-                        }
-
-                    } catch (err) {
-                        console.error("Erro ao enviar notificação:", err);
+                    } catch (txError) {
+                        console.error("Erro criando transação:", txError);
                     }
                 }
             }
@@ -374,7 +506,7 @@ async function askOpenAI(text) {
         Retorne APENAS JSON (sem markdown):
         {
             "intent": "add_transaction" | "add_reminder" | "get_balance" | "get_bills" | "get_reminders" | "get_debt" | "request_purchase",
-            "title": "Titulo curto ou Nome do item",
+            "title": "Nome COMPLETO do item (se for solicitação de compra, inclua TODOS os detalhes mencionados)",
             "client": "Nome da Empresa (ex: Masternet)",
             "amount": 0.00,
             "type": "expense" | "income" | "task",
@@ -658,6 +790,33 @@ client.on('message_create', async (msg) => {
     // If NOT in whitelist AND NOT a direct command, ignore
     if (!whitelist.includes(sender) && !isDirectCommand) {
         // console.log(`Ignorando mensagem de ${sender} (Não autorizado)`);
+        return;
+    }
+
+    // Command: #reenviar <ID>
+    if (text.trim().toLowerCase().startsWith('#reenviar')) {
+        const idPart = text.split(' ')[1];
+        if (!idPart) {
+            await msg.reply("❌ Use: #reenviar <ID> (Ex: #reenviar 10)");
+            return;
+        }
+
+        const friendlyId = parseInt(idPart.replace('#', ''));
+        console.log(`🔄 Solicitado reenvio para compra #${friendlyId}`);
+
+        const { data: purchase, error } = await supabase
+            .from('purchases')
+            .select('*')
+            .eq('friendly_id', friendlyId)
+            .single();
+
+        if (error || !purchase) {
+            await msg.reply(`❌ Compra #${friendlyId} não encontrada.`);
+            return;
+        }
+
+        await msg.reply("🔄 Reenviando notificação...");
+        await sendPurchaseNotification(purchase, msg.from); // Force send to requester
         return;
     }
 

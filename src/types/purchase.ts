@@ -16,4 +16,5 @@ export interface Purchase {
     purchase_date?: string;
     freight?: number;
     supplier?: string;
+    batch_id?: string;
 }
