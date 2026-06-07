@@ -3,8 +3,9 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /app
 
-# Instalar dependências do frontend
-COPY package.json package-lock.json* bun.lockb* ./
+# Instalar TODAS as dependências (incluindo devDependencies como vite, typescript)
+COPY package.json package-lock.json* ./
+ENV NODE_ENV=development
 RUN npm install --legacy-peer-deps
 
 # Copiar código fonte e buildar
@@ -19,7 +20,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 ARG VITE_GEMINI_API_KEY=""
 ENV VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
 
-RUN npm run build
+RUN npx vite build
 
 # ─── Stage 2: Production ────────────────────────────────────────────────────
 FROM node:20-alpine
