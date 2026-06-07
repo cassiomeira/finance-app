@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
+
+interface User {
+  id: string;
+  email: string;
+  name: string | null;
+}
+
+interface Session {
+  access_token: string;
+  user: User;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -19,43 +29,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    // Verifica sessão existente ao montar
+    const { data: { subscription } } = api.auth.onAuthStateChange(
+      (event, sess) => {
+        if (event === 'SIGNED_IN' && sess) {
+          setSession(sess);
+          setUser(sess.user);
+        } else if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+        }
         setLoading(false);
       }
     );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
 
     return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    const { data, error } = await api.auth.signInWithPassword({ email, password });
+    if (error) return { error };
+    if (data) {
+      setUser(data.user);
+      setSession(data.session);
+    }
+    return { error: null };
   };
 
   const signUp = async (email: string, password: string, name: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: { name }
+    try {
+      const data = await api.auth.signUp(email, password, name);
+      if (data.data?.user) {
+        setUser(data.data.user);
+        setSession(data.data.session);
       }
-    });
-    return { error };
+      return { error: null };
+    } catch (err: any) {
+      return { error: err };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await api.auth.signOut();
+    setUser(null);
+    setSession(null);
   };
 
   return (

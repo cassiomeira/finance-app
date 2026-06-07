@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Profile, SubscriptionStatus } from '@/types/finance';
 
@@ -11,21 +11,11 @@ export function useProfile() {
     queryKey: ['profile', user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      if (error) throw error;
-      
-      if (data) {
-        return {
-          ...data,
-          subscription_status: data.subscription_status as SubscriptionStatus
-        } as Profile;
-      }
-      return null;
+      const data = await api.profiles.get();
+      return {
+        ...data,
+        subscription_status: data.subscription_status as SubscriptionStatus
+      } as Profile;
     },
     enabled: !!user?.id,
   });
@@ -34,9 +24,8 @@ export function useProfile() {
     queryKey: ['is-admin', user?.id],
     queryFn: async () => {
       if (!user?.id) return false;
-      const { data, error } = await supabase.rpc('is_admin', { _user_id: user.id });
-      if (error) return false;
-      return data === true;
+      const data = await api.profiles.isAdmin();
+      return data.is_admin === true;
     },
     enabled: !!user?.id,
   });
@@ -44,18 +33,13 @@ export function useProfile() {
   const updateProfile = useMutation({
     mutationFn: async (updates: Partial<Profile>) => {
       if (!user?.id) throw new Error('No user');
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id);
-      if (error) throw error;
+      await api.profiles.update(updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] });
     },
   });
 
-  // Admin has full access regardless of subscription
   const hasFullAccess = isAdmin === true;
   const isPremium = hasFullAccess || profile?.subscription_status === 'premium';
   const transactionLimit = isPremium ? Infinity : 50;
