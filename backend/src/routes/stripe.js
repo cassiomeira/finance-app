@@ -69,6 +69,43 @@ router.post('/create-checkout', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /stripe/create-portal-session
+router.post('/create-portal-session', authMiddleware, async (req, res) => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(503).json({ error: 'Pagamentos não configurados neste servidor' });
+  }
+
+  const Stripe = require('stripe');
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+  try {
+    const { origin } = req.body;
+    const baseUrl = origin || process.env.FRONTEND_URL || 'http://localhost:5173';
+
+    // Busca customer ID do perfil
+    const profile = await pool.query(
+      'SELECT stripe_customer_id FROM profiles WHERE id = $1',
+      [req.user.id]
+    );
+
+    const customerId = profile.rows[0]?.stripe_customer_id;
+
+    if (!customerId) {
+      return res.status(400).json({ error: 'Nenhuma assinatura encontrada' });
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${baseUrl}/subscription`,
+    });
+
+    res.json({ url: portalSession.url });
+  } catch (err) {
+    console.error('Erro no portal:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /stripe/webhook — recebe eventos do Stripe
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   if (!process.env.STRIPE_SECRET_KEY) {

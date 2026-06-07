@@ -1,5 +1,5 @@
 /**
- * Cliente de API - substitui o @supabase/supabase-js
+ * Cliente de API - comunicação com o backend Express.js/PostgreSQL
  * Todas as chamadas ao backend próprio passam por aqui.
  */
 
@@ -218,9 +218,30 @@ export const api = {
     },
   },
 
+  // ─── EMPRÉSTIMOS ────────────────────────────────────────────────────────
+  loans: {
+    getAll: () => request('GET', '/loans'),
+    create: (data: any) => request('POST', '/loans', data),
+    update: (id: string, data: any) => request('PUT', `/loans/${id}`, data),
+    delete: (id: string) => request('DELETE', `/loans/${id}`),
+    toggleIntegration: (id: string, integrate: boolean) =>
+      request('PATCH', `/loans/${id}/integration`, { integrate_in_dashboard: integrate }),
+    createPayment: (loanId: string, data: any) =>
+      request('POST', `/loans/${loanId}/payments`, data),
+    batchPayments: (loanId: string, payments: any[]) =>
+      request('POST', `/loans/${loanId}/payments/batch`, payments),
+    deletePayments: (loanId: string) =>
+      request('DELETE', `/loans/${loanId}/payments`),
+    replacePayments: (loanId: string, payments: any[]) =>
+      request('PUT', `/loans/${loanId}/payments/replace`, payments),
+    syncTransactions: (loanId: string, transactions: any[]) =>
+      request('POST', `/loans/${loanId}/sync-transactions`, { transactions }),
+  },
+
   // ─── STRIPE ───────────────────────────────────────────────────────────────
   stripe: {
     createCheckout: (origin: string) => request('POST', '/stripe/create-checkout', { origin }),
+    createPortalSession: (origin: string) => request('POST', '/stripe/create-portal-session', { origin }),
   },
 
   // ─── UPLOAD GENÉRICO ──────────────────────────────────────────────────────

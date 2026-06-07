@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Check, Crown, ArrowLeft, Loader2, Shield, Settings } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useProfile } from '@/hooks/useProfile';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 const features = {
@@ -30,11 +30,7 @@ export default function Subscription() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { origin: window.location.origin },
-      });
-
-      if (error) throw error;
+      const data = await api.stripe.createCheckout(window.location.origin);
 
       if (data?.url) {
         window.location.href = data.url;
@@ -50,11 +46,7 @@ export default function Subscription() {
   const handleManageSubscription = async () => {
     setPortalLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        body: { origin: window.location.origin },
-      });
-
-      if (error) throw error;
+      const data = await api.stripe.createPortalSession(window.location.origin);
 
       if (data?.url) {
         window.location.href = data.url;

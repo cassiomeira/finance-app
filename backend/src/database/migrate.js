@@ -5,7 +5,7 @@ const schema = `
 -- Extensão UUID
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Tabela de usuários (substitui auth.users do Supabase)
+-- Tabela de usuários
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email TEXT UNIQUE NOT NULL,
@@ -161,6 +161,43 @@ CREATE TABLE IF NOT EXISTS purchases (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Tabela de empréstimos
+CREATE TABLE IF NOT EXISTS loans (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('borrowed', 'lent')),
+  principal_amount DECIMAL(12,2) NOT NULL,
+  interest_rate DECIMAL(8,4) NOT NULL DEFAULT 0,
+  interest_period TEXT DEFAULT 'monthly' CHECK (interest_period IN ('monthly', 'yearly')),
+  interest_type TEXT DEFAULT 'simple' CHECK (interest_type IN ('simple', 'compound')),
+  start_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  number_of_installments INTEGER,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled')),
+  integrate_in_dashboard BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabela de pagamentos de empréstimo
+CREATE TABLE IF NOT EXISTS loan_payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  loan_id UUID NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+  amount DECIMAL(12,2) NOT NULL,
+  date TIMESTAMPTZ NOT NULL,
+  note TEXT,
+  installment_number INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add loan_id to transactions if missing
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='loan_id') THEN
+    ALTER TABLE transactions ADD COLUMN loan_id UUID REFERENCES loans(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -169,6 +206,8 @@ CREATE INDEX IF NOT EXISTS idx_categories_user_id ON categories(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status);
 CREATE INDEX IF NOT EXISTS idx_budgets_user_month ON budgets(user_id, month, year);
+CREATE INDEX IF NOT EXISTS idx_loans_user_id ON loans(user_id);
+CREATE INDEX IF NOT EXISTS idx_loan_payments_loan_id ON loan_payments(loan_id);
 `;
 
 const defaultCategories = `

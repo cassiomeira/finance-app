@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
             </p>
             <ul className="list-disc pl-6 space-y-2">
               <li><strong>Stripe:</strong> Para processamento de pagamentos (não armazenamos dados de cartão de crédito para pagamento)</li>
-              <li><strong>Supabase:</strong> Para armazenamento seguro de dados</li>
+              <li><strong>PostgreSQL:</strong> Para armazenamento seguro de dados em servidor próprio</li>
               <li><strong>Autoridades legais:</strong> Quando exigido por lei</li>
             </ul>
           </section>

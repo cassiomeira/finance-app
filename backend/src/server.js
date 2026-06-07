@@ -37,6 +37,7 @@ app.use('/credit-cards', require('./routes/creditCards'));
 app.use('/reminders', require('./routes/reminders'));
 app.use('/budgets', require('./routes/budgets'));
 app.use('/purchases', require('./routes/purchases'));
+app.use('/loans', require('./routes/loans'));
 app.use('/stripe', stripeRouter);
 app.use('/upload', require('./routes/upload'));
 

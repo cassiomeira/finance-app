@@ -16,7 +16,7 @@ import { LoanForm } from '@/components/loans/LoanForm';
 import { LoanList } from '@/components/loans/LoanList';
 import { Loan } from '@/types/loan';
 import { calculateLoan, calculateCurrentDebt, calculateDynamicSchedule } from '@/utils/loanCalculations';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -33,23 +33,10 @@ export default function Loans() {
 
         try {
             setIsLoading(true);
-            const { data: loansData, error: loansError } = await supabase
-                .from('loans')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const loansData = await api.loans.getAll();
 
-            if (loansError) throw loansError;
-
-            const loansWithDetails = await Promise.all(loansData.map(async (loan: any) => {
+            const loansWithDetails = loansData.map((loan: any) => {
                 try {
-                    const { data: paymentsData, error: paymentsError } = await supabase
-                        .from('loan_payments')
-                        .select('*')
-                        .eq('loan_id', loan.id)
-                        .order('date', { ascending: true });
-
-                    if (paymentsError) throw paymentsError;
-
                     // Mapear snake_case do banco para camelCase do frontend
                     const mappedLoan: Loan = {
                         id: loan.id,
@@ -60,13 +47,13 @@ export default function Loans() {
                         interestRate: Number(loan.interest_rate),
                         interestPeriod: loan.interest_period,
                         interestType: loan.interest_type,
-                        startDate: new Date(loan.start_date || new Date()), // Fallback safety
+                        startDate: new Date(loan.start_date || new Date()),
                         numberOfInstallments: loan.number_of_installments,
                         status: loan.status,
                         createdAt: new Date(loan.created_at),
                         updatedAt: new Date(loan.updated_at),
                         integrate_in_dashboard: loan.integrate_in_dashboard,
-                        payments: paymentsData.map((p: any) => ({
+                        payments: (loan.payments || []).map((p: any) => ({
                             id: p.id,
                             loanId: p.loan_id,
                             amount: Number(p.amount),
@@ -74,7 +61,6 @@ export default function Loans() {
                             note: p.note,
                             installmentNumber: p.installment_number
                         })),
-                        // Inicializa com array vazio, será preenchido pelo calculateDynamicSchedule
                         installments: [],
                         totalAmount: 0
                     };
@@ -88,17 +74,16 @@ export default function Loans() {
                     return {
                         ...mappedLoan,
                         installments: dynamicData.installments,
-                        currentBalance: dynamicData.currentBalance, // Use dynamic for consistency
-                        totalPaid: dynamicData.totalPaid, // Use dynamic for consistency with table
+                        currentBalance: dynamicData.currentBalance,
+                        totalPaid: dynamicData.totalPaid,
                         monthlyPayment: dynamicData.monthlyPayment,
-                        // Total amount projetado é a soma das parcelas (já inclui juros)
                         totalAmount: dynamicData.installments.reduce((sum, i) => sum + i.amount, 0)
                     };
                 } catch (err) {
                     console.error(`Error processing loan ${loan.id}:`, err);
                     return null;
                 }
-            }));
+            });
 
             setLoans(loansWithDetails.filter(Boolean) as Loan[]);
         } catch (error) {
@@ -133,8 +118,7 @@ export default function Loans() {
 
         try {
             // 1. Criar o empréstimo
-            const { data: loanData, error } = await supabase.from('loans').insert({
-                user_id: user.id,
+            const loanData = await api.loans.create({
                 name: data.name,
                 type: data.type,
                 principal_amount: data.principalAmount,
@@ -144,90 +128,28 @@ export default function Loans() {
                 start_date: data.startDate.toISOString(),
                 number_of_installments: data.isIndefinite ? null : data.numberOfInstallments,
                 status: 'active'
-            }).select().single();
+            });
 
-            if (error) throw error;
-
-            // 2. Se houver overrides/customizações, salvar como pagamentos iniciais?
-            // O usuário quer que o empréstimo comece JÁ com aquele plano.
-            // Se salvarmos como pagamentos, eles serão abatidos.
-            // Mas o usuário pode ter apenas REAGENDADO (mudado data) ou mudado valor da parcela futura.
-            // Se mudou valor da parcela futura, NÃO é pagamento realizado. É PROJEÇÃO.
-            // MAS nosso sistema de 'loan_payments' é apenas para REALIZADOS.
-
-            // SOLUÇÃO: Não temos tabela de 'installments' customizada. Tudo é calculado dinâmica.
-            // SE o usuário customizou a simulação (ex: mudou datas ou valores), e quer 'Salvar' isso...
-            // Precisaríamos salvar 'overrides' no banco (ex: coluna JSONB 'schedule_overrides').
-
-            // Como não temos schema change agora, vamos usar 'loan_payments' APENAS se o usuário marcou como 'Pago'?
-            // Não, o usuário disse 'Simulação'.
-
-            // Se eu não salvar, o usuário perde a edição.
-            // PROPOSTA: Salvar os overrides como 'scheduled' payments? Não existe status.
-            // Vou salvar como pagamentos com nota 'Agendado'?
-            // O `calculateDynamicSchedule` trata pagamentos como Realizados.
-
-            // Mas espere: O usuário quer que a tabela FIQUE IGUAL.
-            // Se a tabela simulada tem valores diferentes, é porque o usuário mudou.
-            // Se eu não persistir, volta ao padrão.
-            // Vou persistir como pagamentos COM DATA FUTURA.
-            // Assim, o `calculateDynamicSchedule` vai consumi-los nas datas corretas e gerar os valores corretos.
-
-            // Vou iterar sobre os `simulatedInstallments` e criar pagamentos para aqueles que diferem do padrão?
-            // Melhor: Se houver overrides, criar pagamentos correspondentes.
-
+            // 2. Se houver overrides, salvar como pagamentos simulados
             if (overrides && Object.keys(overrides).length > 0) {
-                const initialPayments = [];
-
-                // Precisamos saber QUAIS pagamentos criar.
-                // Se o usuário mudou a data da parcela 1, criamos um pagamento na nova data com valor da parcela?
-                // Se criarmos um pagamento, o sistema considera status 'Paid' (ou futuro).
-                // Isso pode confundir se o usuário achar que já pagou.
-                // Mas visualmente vai bater a tabela.
-
-                // Vamos criar pagamentos para TODAS as parcelas que tiverem override ou para todas da simulação?
-                // Se criarmos para todas, o usuário terá que deletar para marcar como não pago? Não.
-
-                // O usuário reclamou: "não consigo editar o vencimento depois que crio".
-                // Isso implica que ele quer manter a DATA personalizada.
-                // Como não tenho campo 'due_date_override' por parcela...
-                // Vou usar o hack de criar um pagamento com valor 0 ou algo assim? Não.
-
-                // Vou salvar apenas pagamentos que o usuário EXPLÍCITAMENTE definir (se houvesse checkbox 'pago').
-                // Mas ele só editou a simulação.
-
-                // Se eu não posso alterar o Schema, e preciso persistir datas/valores customizados...
-                // Não há como fazer isso sem tabela de installments ou coluna JSON.
-
-                // VOU INSERIR UM PAGAMENTO DE $0.00 CORRIGINDO A DATA? 
-                // Não, valor 0 deleta pagamento na minha lógica de edição.
-
-                // VOU TENTAR UMA ALTERNATIVA VIÁVEL:
-                // Inserir pagamentos com nota 'Simulação'.
-                // O usuário poderá editá-los depois na tela de detalhes (que agora suporta edição).
-
-                // Filtrar apenas overrides e criar pagamentos.
                 const paymentsToInsert = Object.entries(overrides).map(([index, ov]) => {
-                    // Precisamos da data original para saber se mudou?
-                    // Pegamos do simulatedInstallments
                     const inst = simulatedInstallments?.find(i => i.number === Number(index));
                     if (!inst) return null;
 
                     return {
-                        loan_id: loanData.id,
-                        amount: ov.amount ?? inst.amount, // Valor customizado ou original
-                        date: (ov.date ?? inst.dueDate).toISOString(), // Data customizada ou original
+                        amount: ov.amount ?? inst.amount,
+                        date: (ov.date ?? inst.dueDate).toISOString(),
                         note: 'Agendamento Simulado',
-                        installment_number: Number(index) // FIX: Tag payment to installment
+                        installment_number: Number(index)
                     };
-                }).filter(Boolean); // Remove nulls
+                }).filter(Boolean);
 
                 if (paymentsToInsert.length > 0) {
-                    const { error: batchError } = await supabase
-                        .from('loan_payments')
-                        .insert(paymentsToInsert as any[]);
-
-                    if (batchError) console.error("Erro ao salvar simulação", batchError);
+                    try {
+                        await api.loans.batchPayments(loanData.id, paymentsToInsert);
+                    } catch (batchError) {
+                        console.error("Erro ao salvar simulação", batchError);
+                    }
                 }
             }
 
@@ -250,9 +172,7 @@ export default function Loans() {
 
     const handleDeleteLoan = async (loanId: string) => {
         try {
-            const { error } = await supabase.from('loans').delete().eq('id', loanId);
-
-            if (error) throw error;
+            await api.loans.delete(loanId);
 
             toast({
                 title: "Sucesso",
@@ -272,25 +192,14 @@ export default function Loans() {
 
     // Helper to sync loan state to transactions
     const syncLoanToDashboard = async (loanId: string, userId: string) => {
-        // 1. Fetch fresh loan data with payments
-        const { data: loanData, error: loanError } = await supabase
-            .from('loans')
-            .select('*')
-            .eq('id', loanId)
-            .single();
+        // 1. Fetch fresh loan data with payments (API returns loan with nested payments)
+        const allLoans = await api.loans.getAll();
+        const loanData = allLoans.find((l: any) => l.id === loanId);
 
-        if (loanError || !loanData) throw loanError || new Error("Loan not found");
-
-        const { data: paymentsData, error: paymentsError } = await supabase
-            .from('loan_payments')
-            .select('*')
-            .eq('loan_id', loanId)
-            .order('date', { ascending: true });
-
-        if (paymentsError) throw paymentsError;
+        if (!loanData) throw new Error("Loan not found");
 
         // Skip if not integrated
-        if (!(loanData as any).integrate_in_dashboard) return;
+        if (!loanData.integrate_in_dashboard) return;
 
         // 2. Map logic (same as fetchLoans)
         const mappedLoan: Loan = {
@@ -307,8 +216,8 @@ export default function Loans() {
             status: loanData.status,
             createdAt: new Date(loanData.created_at),
             updatedAt: new Date(loanData.updated_at),
-            integrate_in_dashboard: (loanData as any).integrate_in_dashboard,
-            payments: (paymentsData || []).map((p: any) => ({
+            integrate_in_dashboard: loanData.integrate_in_dashboard,
+            payments: (loanData.payments || []).map((p: any) => ({
                 id: p.id,
                 loanId: p.loan_id,
                 amount: Number(p.amount),
@@ -328,73 +237,55 @@ export default function Loans() {
 
         // 4.1 Principal
         transactions.push({
-            user_id: userId,
             amount: mappedLoan.principalAmount,
             type: mappedLoan.type === 'borrowed' ? 'income' : 'expense',
             description: `Empréstimo: ${mappedLoan.name}`,
             date: format(mappedLoan.startDate, 'yyyy-MM-dd'),
             category_id: null,
             payment_method: 'transfer',
-            loan_id: loanId,
             status: 'paid'
         });
 
         // 4.2 Realized Payments (PAID)
         mappedLoan.payments.forEach(p => {
             transactions.push({
-                user_id: userId,
                 amount: p.amount,
                 type: mappedLoan.type === 'borrowed' ? 'expense' : 'income',
                 description: `Pagamento Empréstimo: ${mappedLoan.name}`,
                 date: format(p.date, 'yyyy-MM-dd'),
                 payment_method: 'transfer',
-                loan_id: loanId,
                 status: 'paid'
             });
         });
 
         // 4.3 Pending Installments (PENDING)
-        // Only if loan is active
         if (mappedLoan.status === 'active') {
             pendingInstallments.forEach(inst => {
                 transactions.push({
-                    user_id: userId,
                     amount: inst.amount,
                     type: mappedLoan.type === 'borrowed' ? 'expense' : 'income',
-                    // Borrowed -> Pay Installment (Expense). Lent -> Receive Installment (Income).
                     description: `Parcela ${inst.number} - ${mappedLoan.name}`,
                     date: format(inst.dueDate, 'yyyy-MM-dd'),
                     payment_method: 'transfer',
-                    loan_id: loanId,
                     status: 'pending'
                 });
             });
         }
 
-        // 5. Atomic Replace
-        // Delete all
-        await supabase.from('transactions').delete().eq('loan_id', loanId);
-
-        // Insert new
-        if (transactions.length > 0) {
-            await supabase.from('transactions').insert(transactions as any);
-        }
+        // 5. Atomic Replace via API
+        await api.loans.syncTransactions(loanId, transactions);
     };
 
     const handleToggleIntegration = async (loanId: string, checked: boolean) => {
         try {
-            const { error } = await supabase
-                .from('loans')
-                .update({ integrate_in_dashboard: checked } as any)
-                .eq('id', loanId);
-
-            if (error) throw error;
+            await api.loans.toggleIntegration(loanId, checked);
 
             if (checked && user) {
                 await syncLoanToDashboard(loanId, user.id);
                 toast({ title: "Integrado!", description: "Transações e parcelas futuras sincronizadas." });
             } else {
-                await supabase.from('transactions').delete().eq('loan_id', loanId);
+                // When disabling, sync with empty transactions to clear them
+                await api.loans.syncTransactions(loanId, []);
                 toast({ title: "Desvinculado", description: "Transações removidas do Dashboard." });
             }
 
@@ -411,14 +302,11 @@ export default function Loans() {
 
     const handleAmortize = async (loanId: string, amount: number) => {
         try {
-            const { error } = await supabase.from('loan_payments').insert({
-                loan_id: loanId,
+            await api.loans.createPayment(loanId, {
                 amount: amount,
                 date: new Date().toISOString(),
                 note: 'Amortização manual'
             });
-
-            if (error) throw error;
 
             if (user) await syncLoanToDashboard(loanId, user.id);
 
@@ -441,45 +329,17 @@ export default function Loans() {
     const handleUpdatePayments = async (loanId: string, payments: { amount: number; date: Date; note?: string; installmentNumber?: number }[]) => {
         console.log('Received payments to update:', payments);
         try {
-            // 1. Deletar pagamentos existentes
-            const { error: deleteError } = await supabase
-                .from('loan_payments')
-                .delete()
-                .eq('loan_id', loanId);
+            // Replace all payments atomically via API
+            const insertedData = await api.loans.replacePayments(loanId, payments.map(p => ({
+                amount: p.amount,
+                date: p.date.toISOString(),
+                note: p.note || null,
+                installment_number: p.installmentNumber
+            })));
 
-            if (deleteError) throw deleteError;
+            console.log('Inserted payments debug:', insertedData);
 
-            // 2. Inserir novos pagamentos
-            if (payments.length > 0) {
-                const { data: insertedData, error: insertError } = await supabase
-                    .from('loan_payments')
-                    .insert(payments.map(p => ({
-                        loan_id: loanId,
-                        amount: p.amount,
-                        date: p.date.toISOString(),
-                        note: p.note || null,
-                        installment_number: p.installmentNumber
-                    })))
-                    .select();
-
-                console.log('Inserted payments debug:', insertedData);
-
-                if (insertedData && insertedData.length > 0) {
-                    const hasPersistence = insertedData.some((p: any) => p.installment_number != null);
-                    if (!hasPersistence) {
-                        console.error("CRITICAL: installment_number Missing in DB response!");
-                        toast({
-                            title: "Erro Crítico de Persistência",
-                            description: "O banco de dados não salvou a ordem das parcelas. Verifique se você rodou o Script SQL 'add_installment_number.sql' no Supabase!",
-                            variant: "destructive"
-                        });
-                    }
-                }
-
-                if (insertError) throw insertError;
-            }
-
-            // 3. Sync
+            // Sync with dashboard
             if (user) await syncLoanToDashboard(loanId, user.id);
 
             toast({
