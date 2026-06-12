@@ -1,4 +1,5 @@
 require('dotenv').config();
+// Garante que DATABASE_URL está disponível antes de criar o pool
 const pool = require('./db');
 
 const schema = `
