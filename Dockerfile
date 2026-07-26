@@ -105,6 +105,7 @@ stderr_logfile_maxbytes=0
 [program:backend]
 command=node /app/backend/src/server.js
 directory=/app/backend
+environment=PORT="3001"
 autostart=true
 autorestart=true
 stdout_logfile=/dev/stdout
