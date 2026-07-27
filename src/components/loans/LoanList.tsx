@@ -6,9 +6,10 @@ interface LoanListProps {
     onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null }) => void;
     onDeletePayment: (loanId: string, paymentId: string) => void;
     onDelete?: (loanId: string) => void;
+    onToggleIntegration?: (loanId: string, checked: boolean) => void;
 }
 
-export function LoanList({ loans, onRegisterPayment, onDeletePayment, onDelete }: LoanListProps) {
+export function LoanList({ loans, onRegisterPayment, onDeletePayment, onDelete, onToggleIntegration }: LoanListProps) {
     if (loans.length === 0) {
         return (
             <div className="text-center py-12">
@@ -26,6 +27,7 @@ export function LoanList({ loans, onRegisterPayment, onDeletePayment, onDelete }
                     onRegisterPayment={onRegisterPayment}
                     onDeletePayment={onDeletePayment}
                     onDelete={onDelete}
+                    onToggleIntegration={onToggleIntegration}
                 />
             ))}
         </div>

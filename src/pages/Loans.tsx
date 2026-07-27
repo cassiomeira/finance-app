@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { format } from 'date-fns';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -54,12 +55,14 @@ export default function Loans() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
-    const fetchLoans = async () => {
-        if (!user) return;
+    const fetchLoans = async (): Promise<Loan[]> => {
+        if (!user) return [];
         try {
             setIsLoading(true);
             const loansData = await api.loans.getAll();
-            setLoans(loansData.map(mapLoan));
+            const mapped = loansData.map(mapLoan);
+            setLoans(mapped);
+            return mapped;
         } catch (error) {
             console.error('Erro ao buscar empréstimos:', error);
             toast({
@@ -67,8 +70,43 @@ export default function Loans() {
                 description: 'Não foi possível carregar seus empréstimos.',
                 variant: 'destructive',
             });
+            return [];
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Monta as transações que representam o empréstimo no dashboard:
+    // principal (na data de início) + cada pagamento real.
+    const buildLoanTransactions = (loan: Loan) => {
+        const txns = [
+            {
+                amount: loan.principalAmount,
+                type: loan.type === 'borrowed' ? 'income' : 'expense',
+                description: `Empréstimo: ${loan.name}`,
+                date: format(loan.startDate, 'yyyy-MM-dd'),
+                payment_method: 'transfer',
+                status: 'paid',
+            },
+        ];
+        (loan.payments || []).forEach((p) => {
+            txns.push({
+                amount: p.amount,
+                type: loan.type === 'borrowed' ? 'expense' : 'income',
+                description: `Pagamento empréstimo: ${loan.name}`,
+                date: format(p.date, 'yyyy-MM-dd'),
+                payment_method: 'transfer',
+                status: 'paid',
+            });
+        });
+        return txns;
+    };
+
+    // Re-sincroniza um empréstimo com o dashboard, se a integração estiver ligada.
+    const resyncIfIntegrated = async (loanId: string, fresh: Loan[]) => {
+        const loan = fresh.find((l) => l.id === loanId);
+        if (loan?.integrate_in_dashboard) {
+            await api.loans.syncTransactions(loanId, buildLoanTransactions(loan));
         }
     };
 
@@ -138,7 +176,8 @@ export default function Loans() {
                 note: data.note ?? null,
             });
             toast({ title: 'Pagamento registrado', description: 'O saldo foi recalculado.' });
-            fetchLoans();
+            const fresh = await fetchLoans();
+            await resyncIfIntegrated(loanId, fresh);
         } catch (error) {
             console.error('Erro ao registrar pagamento:', error);
             toast({ title: 'Erro', description: 'Não foi possível registrar o pagamento.', variant: 'destructive' });
@@ -157,10 +196,34 @@ export default function Loans() {
                 }));
             await api.loans.replacePayments(loanId, remaining);
             toast({ title: 'Pagamento excluído', description: 'O saldo foi recalculado.' });
-            fetchLoans();
+            const fresh = await fetchLoans();
+            await resyncIfIntegrated(loanId, fresh);
         } catch (error) {
             console.error('Erro ao excluir pagamento:', error);
             toast({ title: 'Erro', description: 'Não foi possível excluir o pagamento.', variant: 'destructive' });
+        }
+    };
+
+    const handleToggleIntegration = async (loanId: string, checked: boolean) => {
+        try {
+            await api.loans.toggleIntegration(loanId, checked);
+            if (checked) {
+                const loan = loans.find((l) => l.id === loanId);
+                if (loan) {
+                    await api.loans.syncTransactions(
+                        loanId,
+                        buildLoanTransactions({ ...loan, integrate_in_dashboard: true })
+                    );
+                }
+                toast({ title: 'Integrado', description: 'Empréstimo lançado no dashboard.' });
+            } else {
+                await api.loans.syncTransactions(loanId, []);
+                toast({ title: 'Desvinculado', description: 'Transações removidas do dashboard.' });
+            }
+            fetchLoans();
+        } catch (error) {
+            console.error('Erro ao atualizar integração:', error);
+            toast({ title: 'Erro', description: 'Falha ao atualizar a integração.', variant: 'destructive' });
         }
     };
 
@@ -221,6 +284,7 @@ export default function Loans() {
                     onRegisterPayment={handleRegisterPayment}
                     onDeletePayment={handleDeletePayment}
                     onDelete={handleDeleteLoan}
+                    onToggleIntegration={handleToggleIntegration}
                 />
             </div>
         </AppLayout>

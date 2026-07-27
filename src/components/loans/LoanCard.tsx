@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Switch } from '@/components/ui/switch';
 import { Loan } from '@/types/loan';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,9 +37,10 @@ interface LoanCardProps {
     onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null }) => void;
     onDeletePayment: (loanId: string, paymentId: string) => void;
     onDelete?: (loanId: string) => void;
+    onToggleIntegration?: (loanId: string, checked: boolean) => void;
 }
 
-export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete }: LoanCardProps) {
+export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, onToggleIntegration }: LoanCardProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isPayOpen, setIsPayOpen] = useState(false);
     const [payAmount, setPayAmount] = useState('');
@@ -200,6 +202,22 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete }:
                             exit={{ opacity: 0, height: 0 }}
                             className="mt-6 space-y-6 overflow-hidden border-t pt-6"
                         >
+                            {/* ── Integração com o dashboard ───────────────────────── */}
+                            {onToggleIntegration && (
+                                <div className="flex items-center justify-between rounded-lg border p-3">
+                                    <div className="pr-3">
+                                        <p className="text-sm font-medium">Lançar no dashboard</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            Cria transações do empréstimo e dos pagamentos nos seus lançamentos.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={!!loan.integrate_in_dashboard}
+                                        onCheckedChange={(c) => onToggleIntegration(loan.id, c)}
+                                    />
+                                </div>
+                            )}
+
                             {/* ── Previsão ─────────────────────────────────────────── */}
                             <div>
                                 <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold">
