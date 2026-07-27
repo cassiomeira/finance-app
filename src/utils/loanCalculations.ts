@@ -369,6 +369,150 @@ export const calculateDynamicSchedule = (
     };
 };
 
+// ─── MODELO EXTRATO (saldo devedor com múltiplos abatimentos) ────────────────
+// Processa TODOS os pagamentos em ordem de data, com juros pro-rata por dia sobre
+// o saldo devedor. Aceita vários pagamentos no mesmo mês, em datas/valores livres.
+
+export interface LedgerRow {
+    paymentId?: string;
+    date: Date;
+    amount: number;          // valor pago (abatimento)
+    interest: number;        // juros acumulados desde o evento anterior
+    principal: number;       // quanto abateu do saldo (amount - interest)
+    balanceBefore: number;   // saldo + juros, antes de abater o pagamento
+    balanceAfter: number;    // saldo após o pagamento
+    note?: string;
+}
+
+export interface LedgerResult {
+    rows: LedgerRow[];
+    currentBalance: number;  // saldo devedor HOJE (com juros acumulados até hoje)
+    totalPaid: number;
+    totalInterest: number;   // juros acumulados (pagos + os que já correram até hoje)
+    principal: number;
+    startDate: Date;
+}
+
+const monthlyRateOf = (rate: number, period: InterestPeriod): number =>
+    period === 'yearly' ? Math.pow(1 + rate / 100, 1 / 12) - 1 : rate / 100;
+
+export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResult => {
+    const monthlyRate = monthlyRateOf(Number(loan.interestRate) || 0, loan.interestPeriod);
+    const dailyRate = monthlyRate > 0 ? Math.pow(1 + monthlyRate, 1 / 30) - 1 : 0;
+
+    let start = new Date(loan.startDate);
+    if (isNaN(start.getTime())) start = new Date();
+
+    const principal = Number(loan.principalAmount) || 0;
+    let balance = principal;
+    let lastDate = start;
+    let totalPaid = 0;
+    let totalInterest = 0;
+    const rows: LedgerRow[] = [];
+
+    const accrue = (from: Date, to: Date, bal: number): number => {
+        if (bal <= 0 || dailyRate <= 0) return 0;
+        const days = differenceInDays(to, from);
+        if (days <= 0) return 0;
+        return bal * (Math.pow(1 + dailyRate, days) - 1);
+    };
+
+    const sorted = [...(loan.payments || [])]
+        .map((p) => ({
+            id: (p as any).id as string | undefined,
+            note: (p as any).note as string | undefined,
+            amount: Number(p.amount) || 0,
+            date: new Date(p.date),
+        }))
+        .filter((p) => !isNaN(p.date.getTime()))
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    for (const p of sorted) {
+        const interest = accrue(lastDate, p.date, balance);
+        const balanceBefore = balance + interest;
+        const balanceAfter = Math.max(0, balanceBefore - p.amount);
+        rows.push({
+            paymentId: p.id,
+            date: p.date,
+            amount: p.amount,
+            interest,
+            principal: p.amount - interest,
+            balanceBefore,
+            balanceAfter,
+            note: p.note,
+        });
+        balance = balanceAfter;
+        totalPaid += p.amount;
+        totalInterest += interest;
+        lastDate = p.date;
+    }
+
+    // Juros que já correram do último pagamento até hoje (ainda não pagos)
+    const interestToNow = accrue(lastDate, asOf, balance);
+    const currentBalance = Math.max(0, balance + interestToNow);
+
+    return {
+        rows,
+        currentBalance,
+        totalPaid,
+        totalInterest: totalInterest + interestToNow,
+        principal,
+        startDate: start,
+    };
+};
+
+export interface Projection {
+    feasible: boolean;       // false se o valor/mês não cobre nem os juros
+    months: number;
+    totalToPay: number;      // soma dos pagamentos projetados
+    totalInterest: number;
+    payoffDate?: Date;
+    monthlyInterestNow: number; // juros do primeiro mês (referência de valor mínimo)
+}
+
+export const projectPayoff = (
+    currentBalance: number,
+    rate: number,
+    period: InterestPeriod,
+    monthlyPayment: number,
+    from: Date = new Date()
+): Projection => {
+    const monthlyRate = monthlyRateOf(Number(rate) || 0, period);
+    const monthlyInterestNow = currentBalance * monthlyRate;
+
+    if (currentBalance <= 0) {
+        return { feasible: true, months: 0, totalToPay: 0, totalInterest: 0, payoffDate: from, monthlyInterestNow };
+    }
+    if (monthlyPayment <= monthlyInterestNow + 0.001) {
+        return { feasible: false, months: 0, totalToPay: 0, totalInterest: 0, monthlyInterestNow };
+    }
+
+    let bal = currentBalance;
+    let months = 0;
+    let totalToPay = 0;
+    let totalInterest = 0;
+    const MAX = 600;
+
+    while (bal > 0.005 && months < MAX) {
+        const interest = bal * monthlyRate;
+        bal += interest;
+        const pay = Math.min(monthlyPayment, bal);
+        bal -= pay;
+        totalToPay += pay;
+        totalInterest += interest;
+        months++;
+    }
+
+    return {
+        feasible: bal <= 0.005,
+        months,
+        totalToPay,
+        totalInterest,
+        payoffDate: addMonths(from, months),
+        monthlyInterestNow,
+    };
+};
+
 export const calculateCustomSchedule = (
     principal: number,
     rate: number,

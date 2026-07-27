@@ -3,14 +3,12 @@ import { LoanCard } from './LoanCard';
 
 interface LoanListProps {
     loans: Loan[];
-    onAmortize: (loanId: string, amount: number) => void;
+    onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null }) => void;
+    onDeletePayment: (loanId: string, paymentId: string) => void;
     onDelete?: (loanId: string) => void;
-    onUpdatePayments?: (loanId: string, payments: { amount: number; date: Date; note?: string }[]) => void;
-    onRefresh?: () => void;
-    onToggleIntegration?: (loanId: string, checked: boolean) => void;
 }
 
-export function LoanList({ loans, onAmortize, onDelete, onUpdatePayments, onRefresh, onToggleIntegration }: LoanListProps) {
+export function LoanList({ loans, onRegisterPayment, onDeletePayment, onDelete }: LoanListProps) {
     if (loans.length === 0) {
         return (
             <div className="text-center py-12">
@@ -25,11 +23,9 @@ export function LoanList({ loans, onAmortize, onDelete, onUpdatePayments, onRefr
                 <LoanCard
                     key={loan.id}
                     loan={loan}
-                    onAmortize={onAmortize}
+                    onRegisterPayment={onRegisterPayment}
+                    onDeletePayment={onDeletePayment}
                     onDelete={onDelete}
-                    onUpdatePayments={onUpdatePayments}
-                    onRefresh={onRefresh}
-                    onToggleIntegration={onToggleIntegration}
                 />
             ))}
         </div>
