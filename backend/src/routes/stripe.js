@@ -115,15 +115,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   const Stripe = require('stripe');
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+  // Fail-closed: sem segredo de webhook configurado, nunca confiar no payload.
+  // Caso contrário qualquer um poderia POSTar um evento forjado e virar premium.
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error('STRIPE_WEBHOOK_SECRET não configurado — webhook rejeitado.');
+    return res.status(503).json({ error: 'Webhook não configurado' });
+  }
+
   const sig = req.headers['stripe-signature'];
   let event;
 
   try {
-    if (process.env.STRIPE_WEBHOOK_SECRET && sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-    } else {
-      event = JSON.parse(req.body.toString());
-    }
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     return res.status(400).json({ error: `Webhook error: ${err.message}` });
   }

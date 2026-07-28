@@ -38,10 +38,12 @@ const upload = multer({
 router.get('/', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM purchases ORDER BY created_at DESC`
+      `SELECT * FROM purchases WHERE user_id = $1 ORDER BY created_at DESC`,
+      [req.user.id]
     );
     res.json(result.rows);
   } catch (err) {
+    console.error('Erro ao buscar compras:', err);
     res.status(500).json({ error: 'Erro ao buscar compras' });
   }
 });
@@ -65,11 +67,12 @@ router.put('/:id', authMiddleware, async (req, res) => {
   const setClause = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
   const values = fields.map(f => updates[f]);
   values.push(id);
+  values.push(req.user.id);
 
   try {
     const result = await pool.query(
       `UPDATE purchases SET ${setClause}, updated_at = NOW()
-       WHERE id = $${values.length}
+       WHERE id = $${values.length - 1} AND user_id = $${values.length}
        RETURNING *`,
       values
     );
@@ -79,6 +82,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
+    console.error('Erro ao atualizar compra:', err);
     res.status(500).json({ error: 'Erro ao atualizar compra' });
   }
 });
@@ -88,14 +92,15 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      'DELETE FROM purchases WHERE id = $1 RETURNING id',
-      [id]
+      'DELETE FROM purchases WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, req.user.id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Compra não encontrada' });
     }
     res.json({ message: 'Compra removida' });
   } catch (err) {
+    console.error('Erro ao excluir compra:', err);
     res.status(500).json({ error: 'Erro ao excluir compra' });
   }
 });

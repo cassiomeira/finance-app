@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { enforceCardLimit } = require('../middleware/plan');
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // POST /credit-cards
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, enforceCardLimit, async (req, res) => {
   const { name, card_limit, closing_day, due_day, color } = req.body;
 
   if (!name || !card_limit || !closing_day || !due_day) {

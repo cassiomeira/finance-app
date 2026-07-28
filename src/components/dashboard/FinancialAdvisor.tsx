@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Brain, Lightbulb, Loader2, Sparkles } from 'lucide-react';
 import { useTransactions } from '@/hooks/useTransactions';
+import { api } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
 
@@ -18,9 +19,6 @@ export function FinancialAdvisor() {
         setAdvice(null);
 
         try {
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) throw new Error("Chave da API do Gemini não configurada.");
-
             // Prepare data for AI
             const recentTransactions = transactions.slice(0, 50).map(t => ({
                 date: t.date,
@@ -45,22 +43,7 @@ export function FinancialAdvisor() {
                 Responda em Português do Brasil.
             `;
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }]
-                    }),
-                }
-            );
-
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error.message);
-            }
+            const data = await api.ai.gemini([{ parts: [{ text: prompt }] }]);
 
             const text = data.candidates[0].content.parts[0].text;
             setAdvice(text);

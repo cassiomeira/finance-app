@@ -1,6 +1,8 @@
 const express = require('express');
 const pool = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { enforceTransactionLimit } = require('../middleware/plan');
+const { parseAmount } = require('../middleware/validators');
 
 const router = express.Router();
 
@@ -43,15 +45,24 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // POST /transactions
-router.post('/', authMiddleware, async (req, res) => {
+router.post('/', authMiddleware, enforceTransactionLimit, async (req, res) => {
   const {
     type, category_id, amount, description, date,
     payment_method, card_id, is_recurring, recurring_frequency,
     recurring_end_date, status
   } = req.body;
 
-  if (!type || !amount || !date || !payment_method) {
+  if (!type || amount == null || !date || !payment_method) {
     return res.status(400).json({ error: 'Campos obrigatórios: type, amount, date, payment_method' });
+  }
+
+  if (!['income', 'expense'].includes(type)) {
+    return res.status(400).json({ error: 'Tipo inválido' });
+  }
+
+  const parsedAmount = parseAmount(amount);
+  if (parsedAmount.error) {
+    return res.status(400).json({ error: parsedAmount.error });
   }
 
   const client = await pool.connect();
@@ -67,7 +78,7 @@ router.post('/', authMiddleware, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [
-        req.user.id, type, category_id || null, amount, description || null,
+        req.user.id, type, category_id || null, parsedAmount.value, description || null,
         date, payment_method, card_id || null,
         is_recurring || false, recurring_frequency || null, txStatus
       ]
@@ -82,21 +93,12 @@ router.post('/', authMiddleware, async (req, res) => {
           (user_id, description, amount, type, category_id, payment_method, frequency, start_date, end_date, active)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true)`,
         [
-          req.user.id, description || 'Sem descrição', amount, type,
+          req.user.id, description || 'Sem descrição', parsedAmount.value, type,
           category_id || null, payment_method, recurring_frequency,
           date, recurring_end_date || null
         ]
       );
     }
-
-    // Incrementa contador mensal do perfil
-    await client.query(
-      `UPDATE profiles SET
-        monthly_transaction_count = monthly_transaction_count + 1,
-        updated_at = NOW()
-       WHERE id = $1`,
-      [req.user.id]
-    );
 
     await client.query('COMMIT');
 

@@ -4,15 +4,30 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const pool = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { authLimiter } = require('../middleware/rateLimit');
+const { isValidEmail, passwordIssue } = require('../middleware/validators');
 
 const router = express.Router();
 
 // POST /auth/signup
-router.post('/signup', async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
   const { email, password, name } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Email inválido' });
+  }
+
+  const pwIssue = passwordIssue(password);
+  if (pwIssue) {
+    return res.status(400).json({ error: pwIssue });
+  }
+
+  if (name != null && (typeof name !== 'string' || name.length > 120)) {
+    return res.status(400).json({ error: 'Nome inválido' });
   }
 
   const client = await pool.connect();
@@ -73,7 +88,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // POST /auth/signin
-router.post('/signin', async (req, res) => {
+router.post('/signin', authLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -135,6 +150,15 @@ router.get('/user', authMiddleware, async (req, res) => {
 // PUT /auth/user — atualiza nome/senha
 router.put('/user', authMiddleware, async (req, res) => {
   const { name, password } = req.body;
+
+  if (name != null && (typeof name !== 'string' || name.length > 120)) {
+    return res.status(400).json({ error: 'Nome inválido' });
+  }
+  if (password != null) {
+    const pwIssue = passwordIssue(password);
+    if (pwIssue) return res.status(400).json({ error: pwIssue });
+  }
+
   try {
     if (name) {
       await pool.query('UPDATE users SET name = $1, updated_at = NOW() WHERE id = $2', [name, req.user.id]);

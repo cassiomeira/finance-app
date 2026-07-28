@@ -1,9 +1,7 @@
+import { api } from '@/lib/api';
 
 export const aiService = {
     parseReminder: async (text: string) => {
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (!apiKey) throw new Error("Chave da API do Gemini não configurada.");
-
         // FIX: Use user's local time string instead of ISO (UTC)
         // This ensures that "today" means the user's actual today, not tomorrow (if late night)
         const now = new Date();
@@ -34,26 +32,7 @@ export const aiService = {
     `;
 
         try {
-            console.log("Tentando modelo: gemini-flash-latest");
-
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                    }),
-                }
-            );
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                // console.error(`Erro da API Gemini (${response.status}):`, errorText);
-                throw new Error(`API Error: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
+            const data = await api.ai.gemini([{ parts: [{ text: prompt }] }]);
             if (!data.candidates || data.candidates.length === 0) return null;
 
             const resultText = data.candidates[0].content.parts[0].text;

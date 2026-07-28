@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
+const { currentMonthTransactionCount, cardCount } = require('../middleware/plan');
 
 const router = express.Router();
 
@@ -14,8 +15,21 @@ router.get('/me', authMiddleware, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Perfil não encontrado' });
     }
-    res.json(result.rows[0]);
+
+    // Sobrescreve o contador persistido (que nunca resetava) pela contagem
+    // real do mês corrente, para o limite do plano refletir a verdade.
+    const [txCount, cards] = await Promise.all([
+      currentMonthTransactionCount(req.user.id),
+      cardCount(req.user.id),
+    ]);
+
+    res.json({
+      ...result.rows[0],
+      monthly_transaction_count: txCount,
+      credit_card_count: cards,
+    });
   } catch (err) {
+    console.error('Erro ao buscar perfil:', err);
     res.status(500).json({ error: 'Erro ao buscar perfil' });
   }
 });

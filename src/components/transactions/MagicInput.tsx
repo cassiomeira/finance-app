@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCategories } from '@/hooks/useCategories';
 import { useCreditCards } from '@/hooks/useCreditCards';
 import { useTransactions } from '@/hooks/useTransactions';
+import { api } from '@/lib/api';
 
 interface MagicInputProps {
     onTransactionGenerated: (transaction: any) => void;
@@ -162,9 +163,6 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
     const handleProcess = async () => {
         setIsLoading(true);
         try {
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) throw new Error("Chave da API do Gemini não configurada.");
-
             let contents = [];
             const today = new Date().toISOString().split('T')[0];
             const prompt = isInvoiceMode
@@ -222,20 +220,7 @@ export function MagicInput({ onTransactionGenerated }: MagicInputProps) {
                 throw new Error("Nenhuma imagem ou texto fornecido.");
             }
 
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents }),
-                }
-            );
-
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error.message);
-            }
+            const data = await api.ai.gemini(contents);
 
             const rawText = data.candidates[0].content.parts[0].text;
             const jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();

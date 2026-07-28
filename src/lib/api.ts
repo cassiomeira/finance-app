@@ -238,6 +238,11 @@ export const api = {
       request('POST', `/loans/${loanId}/sync-transactions`, { transactions }),
   },
 
+  // ─── IA (proxy do backend — a chave do Gemini fica no servidor) ───────────
+  ai: {
+    gemini: (contents: any[]) => request('POST', '/ai/gemini', { contents }),
+  },
+
   // ─── STRIPE ───────────────────────────────────────────────────────────────
   stripe: {
     createCheckout: (origin: string) => request('POST', '/stripe/create-checkout', { origin }),

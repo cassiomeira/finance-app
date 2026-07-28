@@ -17,6 +17,8 @@ COPY index.html vite.config.ts tsconfig*.json tailwind.config.ts postcss.config.
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
 
+# OBSOLETO: a chave do Gemini agora fica só no backend (env GEMINI_API_KEY).
+# O frontend chama /api/ai/gemini; não embuta mais a chave no bundle.
 ARG VITE_GEMINI_API_KEY=""
 ENV VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
 
