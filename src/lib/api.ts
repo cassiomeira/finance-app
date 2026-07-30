@@ -247,6 +247,7 @@ export const api = {
   stripe: {
     createCheckout: (origin: string) => request('POST', '/stripe/create-checkout', { origin }),
     createPortalSession: (origin: string) => request('POST', '/stripe/create-portal-session', { origin }),
+    syncSubscription: () => request('POST', '/stripe/sync-subscription'),
   },
 
   // ─── UPLOAD GENÉRICO ──────────────────────────────────────────────────────

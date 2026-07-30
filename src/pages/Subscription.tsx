@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Crown, ArrowLeft, Loader2, Shield, Settings } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useProfile } from '@/hooks/useProfile';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -13,14 +14,41 @@ const features = {
 
 export default function Subscription() {
   const { isPremium, isAdmin } = useProfile();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [syncing, setSyncing] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Show message based on URL params
-  if (searchParams.get('canceled') === 'true') {
-    toast.info('Assinatura cancelada. Você pode tentar novamente quando quiser.');
-  }
+  // Ao voltar do checkout/portal do Stripe, sincroniza o status ativamente
+  // (o app pergunta ao Stripe em vez de depender de webhook). Roda uma vez.
+  useEffect(() => {
+    const success = searchParams.get('success') === 'true';
+    const canceled = searchParams.get('canceled') === 'true';
+
+    if (canceled) {
+      toast.info('Assinatura cancelada. Você pode tentar novamente quando quiser.');
+    }
+
+    // Sincroniza sempre que a página abrir (cobre retorno de sucesso e do portal).
+    (async () => {
+      try {
+        setSyncing(true);
+        const { subscription_status } = await api.stripe.syncSubscription();
+        await queryClient.invalidateQueries({ queryKey: ['profile'] });
+        if (success && subscription_status === 'premium') {
+          toast.success('Premium ativado! Aproveite os recursos ilimitados. 🎉');
+        }
+      } catch {
+        // Silencioso: se o Stripe não estiver configurado, apenas ignora.
+      } finally {
+        setSyncing(false);
+        // Limpa os parâmetros da URL para não re-disparar.
+        if (success || canceled) setSearchParams({}, { replace: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubscribe = async () => {
     if (isAdmin) {
@@ -134,12 +162,12 @@ export default function Subscription() {
             <button
               className="w-full btn-finance-primary py-3 flex items-center justify-center gap-2 disabled:opacity-50"
               onClick={handleSubscribe}
-              disabled={loading || isPremium}
+              disabled={loading || isPremium || syncing}
             >
-              {loading ? (
+              {loading || syncing ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  Processando...
+                  {syncing ? 'Verificando...' : 'Processando...'}
                 </>
               ) : isPremium ? (
                 isAdmin ? 'Acesso Admin Ativo' : 'Assinatura Ativa'

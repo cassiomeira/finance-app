@@ -58,7 +58,7 @@ router.post('/create-checkout', authMiddleware, async (req, res) => {
         quantity: 1
       }],
       mode: 'subscription',
-      success_url: `${baseUrl}/dashboard?success=true`,
+      success_url: `${baseUrl}/subscription?success=true`,
       cancel_url: `${baseUrl}/subscription?canceled=true`
     });
 
@@ -103,6 +103,66 @@ router.post('/create-portal-session', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Erro no portal:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /stripe/sync-subscription — sincronização ATIVA (sem webhook).
+// O app pergunta ao Stripe se o cliente tem assinatura ativa e atualiza o
+// perfil. Usado quando não há webhook disponível (ex.: servidor sem HTTPS).
+// Chamada de saída para o Stripe — funciona mesmo em HTTP.
+router.post('/sync-subscription', authMiddleware, async (req, res) => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(503).json({ error: 'Pagamentos não configurados neste servidor' });
+  }
+
+  const Stripe = require('stripe');
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+  try {
+    const profile = await pool.query(
+      'SELECT stripe_customer_id FROM profiles WHERE id = $1',
+      [req.user.id]
+    );
+    const customerId = profile.rows[0]?.stripe_customer_id;
+
+    // Sem customer no Stripe = nunca assinou = free.
+    if (!customerId) {
+      await pool.query(
+        "UPDATE profiles SET subscription_status = 'free' WHERE id = $1 AND subscription_status <> 'free'",
+        [req.user.id]
+      );
+      return res.json({ subscription_status: 'free' });
+    }
+
+    const subs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit: 10,
+    });
+
+    const activeSub = subs.data.find(s => s.status === 'active' || s.status === 'trialing');
+    const hadCanceled = subs.data.some(s => ['canceled', 'unpaid', 'incomplete_expired'].includes(s.status));
+
+    let status;
+    let subId = null;
+    if (activeSub) {
+      status = 'premium';
+      subId = activeSub.id;
+    } else if (hadCanceled) {
+      status = 'cancelled';
+    } else {
+      status = 'free';
+    }
+
+    await pool.query(
+      'UPDATE profiles SET subscription_status = $1, stripe_subscription_id = $2, updated_at = NOW() WHERE id = $3',
+      [status, subId, req.user.id]
+    );
+
+    res.json({ subscription_status: status });
+  } catch (err) {
+    console.error('Erro ao sincronizar assinatura:', err);
+    res.status(500).json({ error: 'Erro ao sincronizar assinatura' });
   }
 });
 
