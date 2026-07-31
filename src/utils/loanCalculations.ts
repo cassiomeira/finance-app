@@ -104,8 +104,8 @@ export const calculateLoan = (
         // Mas para consistência visual:
         let interestProRata = 0;
         if (days > 0 && monthlyRate > 0) {
-            const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
-            interestProRata = runningBalance * (Math.pow(1 + dailyRate, days) - 1);
+            const dailyRate = monthlyRate / 30;
+            interestProRata = runningBalance * (dailyRate * days);
         }
 
         inst.daysElapsed = days;
@@ -149,9 +149,9 @@ export const calculateCurrentDebt = (loan: Loan, currentDate: Date = new Date())
         const days = differenceInDays(to, from);
         if (days <= 0) return 0;
 
-        // Taxa diária equivalente
-        const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
-        const interest = Number(currentBalance) * (Math.pow(1 + dailyRate, days) - 1);
+        // Taxa diária linear: taxa mensal ÷ 30 (juros simples por dia)
+        const dailyRate = monthlyRate / 30;
+        const interest = Number(currentBalance) * (dailyRate * days);
         return interest;
     };
 
@@ -308,8 +308,8 @@ export const calculateDynamicSchedule = (
             const days = isNaN(daysElapsed) ? 30 : daysElapsed;
 
             if (days > 0) {
-                const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
-                interest = Number(currentBalance) * (Math.pow(1 + dailyRate, days) - 1);
+                const dailyRate = monthlyRate / 30;
+                interest = Number(currentBalance) * (dailyRate * days);
             }
         }
 
@@ -372,6 +372,8 @@ export const calculateDynamicSchedule = (
 // ─── MODELO EXTRATO (saldo devedor com múltiplos abatimentos) ────────────────
 // Processa TODOS os pagamentos em ordem de data, com juros pro-rata por dia sobre
 // o saldo devedor. Aceita vários pagamentos no mesmo mês, em datas/valores livres.
+// Juros LINEARES por dia: juros = saldo × (taxa_mensal / 30) × dias.
+// Assim 1% ao mês = 0,0333%/dia; 30 dias fecham exatamente 1%.
 
 export interface LedgerRow {
     paymentId?: string;
@@ -398,7 +400,7 @@ const monthlyRateOf = (rate: number, period: InterestPeriod): number =>
 
 export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResult => {
     const monthlyRate = monthlyRateOf(Number(loan.interestRate) || 0, loan.interestPeriod);
-    const dailyRate = monthlyRate > 0 ? Math.pow(1 + monthlyRate, 1 / 30) - 1 : 0;
+    const dailyRate = monthlyRate > 0 ? monthlyRate / 30 : 0;
 
     let start = new Date(loan.startDate);
     if (isNaN(start.getTime())) start = new Date();
@@ -414,7 +416,7 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
         if (bal <= 0 || dailyRate <= 0) return 0;
         const days = differenceInDays(to, from);
         if (days <= 0) return 0;
-        return bal * (Math.pow(1 + dailyRate, days) - 1);
+        return bal * (dailyRate * days);
     };
 
     const sorted = [...(loan.payments || [])]
@@ -561,8 +563,8 @@ export const calculateCustomSchedule = (
 
         let interest = 0;
         if (daysElapsed > 0 && monthlyRate > 0) {
-            const dailyRate = Math.pow(1 + monthlyRate, 1 / 30) - 1;
-            interest = Number(currentBalance) * (Math.pow(1 + dailyRate, daysElapsed) - 1);
+            const dailyRate = monthlyRate / 30;
+            interest = Number(currentBalance) * (dailyRate * daysElapsed);
         }
 
         const balanceBeforePayment = Number(currentBalance) + Number(interest);
