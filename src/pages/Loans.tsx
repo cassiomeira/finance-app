@@ -22,6 +22,15 @@ import { useToast } from '@/hooks/use-toast';
 const brl = (v: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
+// Lê uma data-only (coluna DATE) pela data LITERAL (YYYY-MM-DD), sem deslocar
+// por fuso. Ex.: "2026-07-16T00:00:00.000Z" vindo de servidor UTC não pode
+// virar 15/07 no Brasil — senão conta 1 dia de juros a mais.
+const parseStartDate = (v: any): Date => {
+    if (v instanceof Date) return v;
+    const m = String(v ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date();
+};
+
 const mapLoan = (loan: any): Loan => ({
     id: loan.id,
     userId: loan.user_id,
@@ -31,7 +40,7 @@ const mapLoan = (loan: any): Loan => ({
     interestRate: Number(loan.interest_rate),
     interestPeriod: loan.interest_period,
     interestType: loan.interest_type,
-    startDate: new Date(loan.start_date || new Date()),
+    startDate: parseStartDate(loan.start_date),
     numberOfInstallments: loan.number_of_installments,
     status: loan.status,
     createdAt: new Date(loan.created_at),
@@ -148,7 +157,7 @@ export default function Loans() {
                 interest_rate: data.interestRate,
                 interest_period: data.interestPeriod,
                 interest_type: data.interestType,
-                start_date: data.startDate.toISOString(),
+                start_date: format(data.startDate, 'yyyy-MM-dd'),
                 number_of_installments: data.isIndefinite ? null : data.numberOfInstallments,
                 status: 'active',
             });
