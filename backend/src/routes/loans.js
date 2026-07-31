@@ -143,10 +143,13 @@ router.patch('/:id/integration', authMiddleware, async (req, res) => {
   }
 });
 
+// Normaliza o tipo de evento: 'disbursement' (novo valor pego, soma) ou 'payment' (abate)
+const normalizeKind = (k) => (k === 'disbursement' ? 'disbursement' : 'payment');
+
 // POST /loans/:id/payments — Create payment for a loan
 router.post('/:id/payments', authMiddleware, async (req, res) => {
   const { id } = req.params;
-  const { amount, date, note, installment_number } = req.body;
+  const { amount, date, note, installment_number, kind } = req.body;
 
   if (!amount || !date) {
     return res.status(400).json({ error: 'Campos obrigatórios: amount, date' });
@@ -163,10 +166,10 @@ router.post('/:id/payments', authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number, kind)
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING *`,
-      [id, amount, date, note || null, installment_number || null]
+      [id, amount, date, note || null, installment_number || null, normalizeKind(kind)]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -201,10 +204,10 @@ router.post('/:id/payments/batch', authMiddleware, async (req, res) => {
       const inserted = [];
       for (const p of payments) {
         const result = await client.query(
-          `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number)
-           VALUES ($1,$2,$3,$4,$5)
+          `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number, kind)
+           VALUES ($1,$2,$3,$4,$5,$6)
            RETURNING *`,
-          [id, p.amount, p.date, p.note || null, p.installment_number || null]
+          [id, p.amount, p.date, p.note || null, p.installment_number || null, normalizeKind(p.kind)]
         );
         inserted.push(result.rows[0]);
       }
@@ -275,10 +278,10 @@ router.put('/:id/payments/replace', authMiddleware, async (req, res) => {
       const inserted = [];
       for (const p of payments) {
         const result = await client.query(
-          `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number)
-           VALUES ($1,$2,$3,$4,$5)
+          `INSERT INTO loan_payments (loan_id, amount, date, note, installment_number, kind)
+           VALUES ($1,$2,$3,$4,$5,$6)
            RETURNING *`,
-          [id, p.amount, p.date, p.note || null, p.installment_number || null]
+          [id, p.amount, p.date, p.note || null, p.installment_number || null, normalizeKind(p.kind)]
         );
         inserted.push(result.rows[0]);
       }

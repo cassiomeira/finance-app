@@ -34,7 +34,7 @@ const brl = (v: number) =>
 
 interface LoanCardProps {
     loan: Loan;
-    onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null }) => void;
+    onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null; kind?: 'payment' | 'disbursement' }) => void;
     onDeletePayment: (loanId: string, paymentId: string) => void;
     onDelete?: (loanId: string) => void;
     onToggleIntegration?: (loanId: string, checked: boolean) => void;
@@ -45,7 +45,10 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
     const [isPayOpen, setIsPayOpen] = useState(false);
     const [payAmount, setPayAmount] = useState('');
     const [payDate, setPayDate] = useState<Date>(new Date());
+    const [payKind, setPayKind] = useState<'payment' | 'disbursement'>('payment');
     const [planMonthly, setPlanMonthly] = useState('');
+
+    const isDisbursement = payKind === 'disbursement';
 
     const ledger = useMemo(() => calculateLedger(loan), [loan]);
 
@@ -65,9 +68,10 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
         e.preventDefault();
         const amount = parseFloat(payAmount.replace(',', '.'));
         if (amount > 0 && !isNaN(payDate.getTime())) {
-            onRegisterPayment(loan.id, { amount, date: payDate, note: null });
+            onRegisterPayment(loan.id, { amount, date: payDate, note: null, kind: payKind });
             setPayAmount('');
             setPayDate(new Date());
+            setPayKind('payment');
             setIsPayOpen(false);
         }
     };
@@ -118,8 +122,12 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-lg bg-muted/50 p-2">
-                        <p className="text-muted-foreground">Valor original</p>
-                        <p className="font-medium">{brl(ledger.principal)}</p>
+                        <p className="text-muted-foreground">
+                            {ledger.totalBorrowed > ledger.principal + 0.005
+                                ? (isBorrowed ? 'Total pego' : 'Total emprestado')
+                                : 'Valor original'}
+                        </p>
+                        <p className="font-medium">{brl(ledger.totalBorrowed)}</p>
                     </div>
                     <div className="rounded-lg bg-muted/50 p-2">
                         <p className="text-muted-foreground">Juros acumulados</p>
@@ -130,18 +138,52 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                 <div className="mt-4 flex gap-2">
                     <Dialog open={isPayOpen} onOpenChange={setIsPayOpen}>
                         <DialogTrigger asChild>
-                            <Button size="sm" className="flex-1 gap-1" disabled={isSettled}>
+                            <Button size="sm" className="flex-1 gap-1">
                                 <Plus className="h-4 w-4" />
-                                Registrar pagamento
+                                Registrar
                             </Button>
                         </DialogTrigger>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>Registrar pagamento — {loan.name}</DialogTitle>
+                                <DialogTitle>
+                                    {isDisbursement ? 'Novo valor' : 'Registrar pagamento'} — {loan.name}
+                                </DialogTitle>
                             </DialogHeader>
                             <form onSubmit={handleSubmitPayment} className="space-y-4 pt-2">
+                                {/* Seletor: pagamento (abate) × novo valor (soma) */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayKind('payment')}
+                                        className={`rounded-lg border p-2 text-sm font-medium transition-colors ${
+                                            !isDisbursement
+                                                ? 'border-primary bg-primary/10 text-primary'
+                                                : 'border-border text-muted-foreground hover:bg-muted/50'
+                                        }`}
+                                    >
+                                        {isBorrowed ? 'Paguei' : 'Recebi'}
+                                        <span className="block text-[10px] font-normal">abate o saldo</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPayKind('disbursement')}
+                                        className={`rounded-lg border p-2 text-sm font-medium transition-colors ${
+                                            isDisbursement
+                                                ? 'border-amber-500 bg-amber-500/10 text-amber-600'
+                                                : 'border-border text-muted-foreground hover:bg-muted/50'
+                                        }`}
+                                    >
+                                        {isBorrowed ? 'Peguei mais' : 'Emprestei mais'}
+                                        <span className="block text-[10px] font-normal">soma ao saldo</span>
+                                    </button>
+                                </div>
+
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Valor pago</label>
+                                    <label className="text-sm font-medium">
+                                        {isDisbursement
+                                            ? (isBorrowed ? 'Valor que peguei a mais' : 'Valor que emprestei a mais')
+                                            : (isBorrowed ? 'Valor pago' : 'Valor recebido')}
+                                    </label>
                                     <Input
                                         type="number"
                                         step="0.01"
@@ -154,7 +196,7 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Data do pagamento</label>
+                                    <label className="text-sm font-medium">Data</label>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button variant="outline" className="w-full justify-start font-normal">
@@ -173,11 +215,12 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                     </Popover>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Pode registrar quantos pagamentos quiser no mês. O saldo e os juros são
-                                    recalculados automaticamente pela data de cada um.
+                                    {isDisbursement
+                                        ? 'Os juros correm até esta data sobre o saldo atual, e então o novo valor é somado. A partir daí os juros passam a correr sobre o saldo maior.'
+                                        : 'Pode registrar quantos pagamentos quiser no mês. O saldo e os juros são recalculados automaticamente pela data de cada um.'}
                                 </p>
                                 <Button type="submit" className="w-full">
-                                    Salvar pagamento
+                                    {isDisbursement ? 'Salvar novo valor' : 'Salvar pagamento'}
                                 </Button>
                             </form>
                         </DialogContent>
@@ -311,18 +354,31 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                                     </td>
                                                     <td className="px-2 py-2" />
                                                 </tr>
-                                                {ledger.rows.map((row, i) => (
+                                                {ledger.rows.map((row, i) => {
+                                                    const isAporte = row.kind === 'disbursement';
+                                                    return (
                                                     <tr key={row.paymentId || i} className="hover:bg-muted/20">
                                                         <td className="px-3 py-2">
                                                             {format(row.date, 'dd/MM/yy', { locale: ptBR })}
+                                                            {isAporte && (
+                                                                <span className="ml-1 rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-600">
+                                                                    novo valor
+                                                                </span>
+                                                            )}
                                                         </td>
-                                                        <td className="px-3 py-2 text-right font-medium text-green-600">
-                                                            {brl(row.amount)}
+                                                        <td
+                                                            className={`px-3 py-2 text-right font-medium ${
+                                                                isAporte ? 'text-amber-600' : 'text-green-600'
+                                                            }`}
+                                                        >
+                                                            {isAporte ? `+${brl(row.amount)}` : brl(row.amount)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right text-destructive">
                                                             {brl(row.interest)}
                                                         </td>
-                                                        <td className="px-3 py-2 text-right">{brl(row.principal)}</td>
+                                                        <td className="px-3 py-2 text-right">
+                                                            {isAporte ? '—' : brl(row.principal)}
+                                                        </td>
                                                         <td className="px-3 py-2 text-right font-medium">
                                                             {brl(row.balanceAfter)}
                                                         </td>
@@ -332,9 +388,9 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                                                     variant="ghost"
                                                                     size="icon"
                                                                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                                                    title="Excluir pagamento"
+                                                                    title="Excluir lançamento"
                                                                     onClick={() => {
-                                                                        if (confirm('Excluir este pagamento?'))
+                                                                        if (confirm('Excluir este lançamento?'))
                                                                             onDeletePayment(loan.id, row.paymentId!);
                                                                     }}
                                                                 >
@@ -343,7 +399,8 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                                             )}
                                                         </td>
                                                     </tr>
-                                                ))}
+                                                    );
+                                                })}
                                             </tbody>
                                             <tfoot className="border-t bg-muted/50 text-xs font-semibold">
                                                 <tr>

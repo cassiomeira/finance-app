@@ -188,14 +188,23 @@ CREATE TABLE IF NOT EXISTS loan_payments (
   date TIMESTAMPTZ NOT NULL,
   note TEXT,
   installment_number INTEGER,
+  kind TEXT NOT NULL DEFAULT 'payment' CHECK (kind IN ('payment', 'disbursement')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Add loan_id to transactions if missing
-DO $$ 
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transactions' AND column_name='loan_id') THEN
     ALTER TABLE transactions ADD COLUMN loan_id UUID REFERENCES loans(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Add kind to loan_payments if missing (pagamento que abate vs aporte que soma)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='loan_payments' AND column_name='kind') THEN
+    ALTER TABLE loan_payments ADD COLUMN kind TEXT NOT NULL DEFAULT 'payment' CHECK (kind IN ('payment', 'disbursement'));
   END IF;
 END $$;
 

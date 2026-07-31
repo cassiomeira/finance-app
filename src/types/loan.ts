@@ -3,12 +3,15 @@ export type InterestType = 'compound' | 'fixed_installment'; // Composto ou Tabe
 export type InterestPeriod = 'monthly' | 'yearly';
 export type LoanStatus = 'active' | 'paid' | 'defaulted';
 
+export type PaymentKind = 'payment' | 'disbursement'; // abate o saldo | soma ao saldo (novo valor pego)
+
 export interface Payment {
   id: string;
   loanId: string;
   amount: number;
   date: Date;
   note?: string;
+  kind?: PaymentKind; // default 'payment'
 }
 
 export interface LoanInstallment {

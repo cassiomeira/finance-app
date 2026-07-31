@@ -378,12 +378,13 @@ export const calculateDynamicSchedule = (
 export interface LedgerRow {
     paymentId?: string;
     date: Date;
-    amount: number;          // valor pago (abatimento)
+    amount: number;          // valor do evento (pagamento ou novo valor pego)
     interest: number;        // juros acumulados desde o evento anterior
-    principal: number;       // quanto abateu do saldo (amount - interest)
-    balanceBefore: number;   // saldo + juros, antes de abater o pagamento
-    balanceAfter: number;    // saldo após o pagamento
+    principal: number;       // pagamento: quanto abateu (amount - juros). aporte: +amount
+    balanceBefore: number;   // saldo + juros, antes do evento
+    balanceAfter: number;    // saldo após o evento
     note?: string;
+    kind: 'payment' | 'disbursement'; // abateu o saldo | somou ao saldo
 }
 
 export interface LedgerResult {
@@ -391,7 +392,8 @@ export interface LedgerResult {
     currentBalance: number;  // saldo devedor HOJE (com juros acumulados até hoje)
     totalPaid: number;
     totalInterest: number;   // juros acumulados (pagos + os que já correram até hoje)
-    principal: number;
+    principal: number;        // valor inicial pego
+    totalBorrowed: number;    // valor inicial + todos os aportes
     startDate: Date;
 }
 
@@ -410,6 +412,7 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
     let lastDate = start;
     let totalPaid = 0;
     let totalInterest = 0;
+    let extraBorrowed = 0;
     const rows: LedgerRow[] = [];
 
     const accrue = (from: Date, to: Date, bal: number): number => {
@@ -425,31 +428,47 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
             note: (p as any).note as string | undefined,
             amount: Number(p.amount) || 0,
             date: new Date(p.date),
+            kind: ((p as any).kind === 'disbursement' ? 'disbursement' : 'payment') as 'payment' | 'disbursement',
         }))
         .filter((p) => !isNaN(p.date.getTime()))
         .sort((a, b) => a.date.getTime() - b.date.getTime());
 
     for (const p of sorted) {
+        // Juros correm até a data do evento, sobre o saldo atual, e são "congelados".
         const interest = accrue(lastDate, p.date, balance);
         const balanceBefore = balance + interest;
-        const balanceAfter = Math.max(0, balanceBefore - p.amount);
+        totalInterest += interest;
+
+        let balanceAfter: number;
+        let principalPart: number;
+        if (p.kind === 'disbursement') {
+            // Novo valor pego: soma ao saldo (juros já foram congelados em balanceBefore).
+            balanceAfter = balanceBefore + p.amount;
+            principalPart = p.amount;
+            extraBorrowed += p.amount;
+        } else {
+            // Pagamento: abate o saldo (primeiro cobre os juros, o resto amortiza).
+            balanceAfter = Math.max(0, balanceBefore - p.amount);
+            principalPart = p.amount - interest;
+            totalPaid += p.amount;
+        }
+
         rows.push({
             paymentId: p.id,
             date: p.date,
             amount: p.amount,
             interest,
-            principal: p.amount - interest,
+            principal: principalPart,
             balanceBefore,
             balanceAfter,
             note: p.note,
+            kind: p.kind,
         });
         balance = balanceAfter;
-        totalPaid += p.amount;
-        totalInterest += interest;
         lastDate = p.date;
     }
 
-    // Juros que já correram do último pagamento até hoje (ainda não pagos)
+    // Juros que já correram do último evento até hoje (ainda não pagos)
     const interestToNow = accrue(lastDate, asOf, balance);
     const currentBalance = Math.max(0, balance + interestToNow);
 
@@ -459,6 +478,7 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
         totalPaid,
         totalInterest: totalInterest + interestToNow,
         principal,
+        totalBorrowed: principal + extraBorrowed,
         startDate: start,
     };
 };

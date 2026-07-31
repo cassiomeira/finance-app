@@ -43,6 +43,7 @@ const mapLoan = (loan: any): Loan => ({
         amount: Number(p.amount),
         date: new Date(p.date),
         note: p.note,
+        kind: p.kind === 'disbursement' ? 'disbursement' : 'payment',
     })),
     installments: [],
     totalAmount: 0,
@@ -90,10 +91,16 @@ export default function Loans() {
             },
         ];
         (loan.payments || []).forEach((p) => {
+            const isDisbursement = p.kind === 'disbursement';
             txns.push({
                 amount: p.amount,
-                type: loan.type === 'borrowed' ? 'expense' : 'income',
-                description: `Pagamento empréstimo: ${loan.name}`,
+                // Aporte = mais valor pego (mesmo fluxo do principal). Pagamento = fluxo inverso.
+                type: isDisbursement
+                    ? (loan.type === 'borrowed' ? 'income' : 'expense')
+                    : (loan.type === 'borrowed' ? 'expense' : 'income'),
+                description: isDisbursement
+                    ? `Novo valor empréstimo: ${loan.name}`
+                    : `Pagamento empréstimo: ${loan.name}`,
                 date: format(p.date, 'yyyy-MM-dd'),
                 payment_method: 'transfer',
                 status: 'paid',
@@ -167,20 +174,25 @@ export default function Loans() {
 
     const handleRegisterPayment = async (
         loanId: string,
-        data: { amount: number; date: Date; note?: string | null }
+        data: { amount: number; date: Date; note?: string | null; kind?: 'payment' | 'disbursement' }
     ) => {
+        const isDisbursement = data.kind === 'disbursement';
         try {
             await api.loans.createPayment(loanId, {
                 amount: data.amount,
                 date: data.date.toISOString(),
                 note: data.note ?? null,
+                kind: data.kind ?? 'payment',
             });
-            toast({ title: 'Pagamento registrado', description: 'O saldo foi recalculado.' });
+            toast({
+                title: isDisbursement ? 'Novo valor registrado' : 'Pagamento registrado',
+                description: 'O saldo foi recalculado.',
+            });
             const fresh = await fetchLoans();
             await resyncIfIntegrated(loanId, fresh);
         } catch (error) {
-            console.error('Erro ao registrar pagamento:', error);
-            toast({ title: 'Erro', description: 'Não foi possível registrar o pagamento.', variant: 'destructive' });
+            console.error('Erro ao registrar evento:', error);
+            toast({ title: 'Erro', description: 'Não foi possível registrar.', variant: 'destructive' });
         }
     };
 
@@ -193,6 +205,7 @@ export default function Loans() {
                     amount: p.amount,
                     date: p.date.toISOString(),
                     note: p.note ?? null,
+                    kind: p.kind ?? 'payment',
                 }));
             await api.loans.replacePayments(loanId, remaining);
             toast({ title: 'Pagamento excluído', description: 'O saldo foi recalculado.' });
