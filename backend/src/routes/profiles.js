@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../database/db');
 const { authMiddleware } = require('../middleware/auth');
 const { currentMonthTransactionCount, cardCount } = require('../middleware/plan');
+const { encrypt } = require('../utils/crypto');
 
 const router = express.Router();
 
@@ -23,8 +24,11 @@ router.get('/me', authMiddleware, async (req, res) => {
       cardCount(req.user.id),
     ]);
 
+    // Nunca expõe a chave Gemini guardada; só informa se existe uma.
+    const { gemini_api_key, ...safe } = result.rows[0];
     res.json({
-      ...result.rows[0],
+      ...safe,
+      has_gemini_key: !!gemini_api_key,
       monthly_transaction_count: txCount,
       credit_card_count: cards,
     });
@@ -50,6 +54,30 @@ router.put('/me', authMiddleware, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Erro ao atualizar perfil' });
+  }
+});
+
+// PUT /profiles/gemini-key — salva (criptografada) ou limpa a chave Gemini do usuário.
+// Envie { key: "AIza..." } para salvar, ou { key: "" } para remover.
+router.put('/gemini-key', authMiddleware, async (req, res) => {
+  const { key } = req.body || {};
+  if (key != null && typeof key !== 'string') {
+    return res.status(400).json({ error: 'Chave inválida' });
+  }
+  const trimmed = (key || '').trim();
+  if (trimmed.length > 500) {
+    return res.status(400).json({ error: 'Chave muito longa' });
+  }
+  try {
+    const enc = trimmed ? encrypt(trimmed) : null;
+    await pool.query(
+      'UPDATE profiles SET gemini_api_key = $1, updated_at = NOW() WHERE id = $2',
+      [enc, req.user.id]
+    );
+    res.json({ has_gemini_key: !!enc });
+  } catch (err) {
+    console.error('Erro ao salvar chave Gemini:', err);
+    res.status(500).json({ error: 'Erro ao salvar chave' });
   }
 });
 

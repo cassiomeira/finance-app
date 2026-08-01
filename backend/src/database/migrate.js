@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   stripe_subscription_id TEXT,
   monthly_transaction_count INTEGER DEFAULT 0,
   last_transaction_reset TIMESTAMPTZ DEFAULT NOW(),
+  gemini_api_key TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -216,6 +217,14 @@ BEGIN
   ALTER TABLE loan_payments ADD CONSTRAINT loan_payments_kind_check
     CHECK (kind IN ('payment', 'disbursement', 'adjust_balance', 'adjust_interest'));
 EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Chave Gemini por usuário (BYOK), guardada criptografada. Adiciona se faltar.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='gemini_api_key') THEN
+    ALTER TABLE profiles ADD COLUMN gemini_api_key TEXT;
+  END IF;
 END $$;
 
 -- Índices para performance

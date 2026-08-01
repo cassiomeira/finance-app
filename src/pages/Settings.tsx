@@ -3,20 +3,42 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTransactions } from '@/hooks/useTransactions';
-import { Crown, User, Mail, Trash2, AlertTriangle } from 'lucide-react';
+import { Crown, User, Mail, AlertTriangle, Sparkles, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 export default function Settings() {
   const { profile, isPremium } = useProfile();
   const { user } = useAuth();
   const { clearMonthTransactions, clearAllTransactions } = useTransactions();
+  const queryClient = useQueryClient();
 
   const [isResetMonthOpen, setIsResetMonthOpen] = useState(false);
   const [isResetAllOpen, setIsResetAllOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+
+  const hasGeminiKey = (profile as any)?.has_gemini_key === true;
+  const [geminiKey, setGeminiKey] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
+
+  const handleSaveGeminiKey = async () => {
+    setSavingKey(true);
+    try {
+      await api.profiles.setGeminiKey(geminiKey.trim());
+      setGeminiKey('');
+      await queryClient.invalidateQueries({ queryKey: ['profile'] });
+      toast.success(geminiKey.trim() ? 'Chave salva!' : 'Chave removida.');
+    } catch {
+      toast.error('Não foi possível salvar a chave.');
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   const handleResetMonth = async () => {
     const today = new Date();
@@ -78,6 +100,57 @@ export default function Settings() {
               </Link>
             )}
           </div>
+        </div>
+
+        <div className="card-finance">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles size={18} className="text-primary" />
+            <h3 className="font-semibold">Inteligência Artificial</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            {isPremium
+              ? 'No Premium a IA (Lançamento Mágico e Consultor) já vem incluída. Você também pode usar sua própria chave do Gemini, se preferir.'
+              : 'No plano gratuito, a IA funciona usando sua própria chave do Gemini (é grátis de gerar). Ou faça upgrade para Premium e use sem configurar nada.'}
+          </p>
+
+          {hasGeminiKey && (
+            <div className="flex items-center gap-2 mb-3 text-sm text-green-600">
+              <Check size={16} />
+              Sua chave do Gemini está configurada.
+            </div>
+          )}
+
+          <label className="text-sm font-medium">Sua chave do Gemini (opcional)</label>
+          <Input
+            type="password"
+            placeholder={hasGeminiKey ? '•••••••••• (deixe em branco para manter)' : 'Cole sua chave (AIza... ou AQ...)'}
+            value={geminiKey}
+            onChange={(e) => setGeminiKey(e.target.value)}
+            className="mt-1"
+          />
+          <div className="flex items-center gap-2 mt-3">
+            <Button size="sm" onClick={handleSaveGeminiKey} disabled={savingKey || (!geminiKey.trim() && !hasGeminiKey)}>
+              {savingKey ? 'Salvando...' : 'Salvar chave'}
+            </Button>
+            {hasGeminiKey && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={savingKey}
+                onClick={() => { setGeminiKey(''); handleSaveGeminiKey(); }}
+              >
+                Remover
+              </Button>
+            )}
+          </div>
+          <a
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-block text-xs text-primary underline"
+          >
+            Gerar uma chave gratuita no Google AI Studio →
+          </a>
         </div>
 
         <div className="card-finance">

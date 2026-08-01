@@ -140,6 +140,7 @@ export const api = {
     get: () => request('GET', '/profiles/me'),
     update: (updates: any) => request('PUT', '/profiles/me', updates),
     isAdmin: () => request('GET', '/profiles/is-admin'),
+    setGeminiKey: (key: string) => request('PUT', '/profiles/gemini-key', { key }),
   },
 
   // ─── CATEGORIAS ───────────────────────────────────────────────────────────
