@@ -52,7 +52,7 @@ const mapLoan = (loan: any): Loan => ({
         amount: Number(p.amount),
         date: new Date(p.date),
         note: p.note,
-        kind: p.kind === 'disbursement' ? 'disbursement' : 'payment',
+        kind: ['disbursement', 'adjust_balance', 'adjust_interest'].includes(p.kind) ? p.kind : 'payment',
     })),
     installments: [],
     totalAmount: 0,
@@ -100,6 +100,8 @@ export default function Loans() {
             },
         ];
         (loan.payments || []).forEach((p) => {
+            // Ajustes (saldo/juros) não são movimento de caixa — não vão pro dashboard.
+            if (p.kind === 'adjust_balance' || p.kind === 'adjust_interest') return;
             const isDisbursement = p.kind === 'disbursement';
             txns.push({
                 amount: p.amount,
@@ -185,7 +187,12 @@ export default function Loans() {
         loanId: string,
         data: { amount: number; date: Date; note?: string | null; kind?: 'payment' | 'disbursement' }
     ) => {
-        const isDisbursement = data.kind === 'disbursement';
+        const titles: Record<string, string> = {
+            payment: 'Pagamento registrado',
+            disbursement: 'Novo valor registrado',
+            adjust_balance: 'Saldo ajustado',
+            adjust_interest: 'Juros ajustado',
+        };
         try {
             await api.loans.createPayment(loanId, {
                 amount: data.amount,
@@ -194,7 +201,7 @@ export default function Loans() {
                 kind: data.kind ?? 'payment',
             });
             toast({
-                title: isDisbursement ? 'Novo valor registrado' : 'Pagamento registrado',
+                title: titles[data.kind ?? 'payment'] || 'Registrado',
                 description: 'O saldo foi recalculado.',
             });
             const fresh = await fetchLoans();

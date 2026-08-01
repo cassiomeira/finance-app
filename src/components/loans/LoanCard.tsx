@@ -13,7 +13,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Switch } from '@/components/ui/switch';
-import { Loan } from '@/types/loan';
+import { Loan, PaymentKind } from '@/types/loan';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -34,7 +34,7 @@ const brl = (v: number) =>
 
 interface LoanCardProps {
     loan: Loan;
-    onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null; kind?: 'payment' | 'disbursement' }) => void;
+    onRegisterPayment: (loanId: string, data: { amount: number; date: Date; note?: string | null; kind?: PaymentKind }) => void;
     onDeletePayment: (loanId: string, paymentId: string) => void;
     onDelete?: (loanId: string) => void;
     onToggleIntegration?: (loanId: string, checked: boolean) => void;
@@ -45,10 +45,13 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
     const [isPayOpen, setIsPayOpen] = useState(false);
     const [payAmount, setPayAmount] = useState('');
     const [payDate, setPayDate] = useState<Date>(new Date());
-    const [payKind, setPayKind] = useState<'payment' | 'disbursement'>('payment');
+    const [payKind, setPayKind] = useState<PaymentKind>('payment');
     const [planMonthly, setPlanMonthly] = useState('');
 
     const isDisbursement = payKind === 'disbursement';
+    const isAdjBalance = payKind === 'adjust_balance';
+    const isAdjInterest = payKind === 'adjust_interest';
+    const isAdjust = isAdjBalance || isAdjInterest;
 
     const ledger = useMemo(() => calculateLedger(loan), [loan]);
 
@@ -67,7 +70,9 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
     const handleSubmitPayment = (e: React.FormEvent) => {
         e.preventDefault();
         const amount = parseFloat(payAmount.replace(',', '.'));
-        if (amount > 0 && !isNaN(payDate.getTime())) {
+        // Ajustes aceitam 0 (saldo quitado / sem juros); pagamento e aporte exigem > 0.
+        const valido = isAdjust ? amount >= 0 : amount > 0;
+        if (valido && !isNaN(amount) && !isNaN(payDate.getTime())) {
             onRegisterPayment(loan.id, { amount, date: payDate, note: null, kind: payKind });
             setPayAmount('');
             setPayDate(new Date());
@@ -146,41 +151,48 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                         <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>
-                                    {isDisbursement ? 'Novo valor' : 'Registrar pagamento'} — {loan.name}
+                                    {isAdjBalance
+                                        ? 'Ajustar saldo'
+                                        : isAdjInterest
+                                        ? 'Ajustar juros'
+                                        : isDisbursement
+                                        ? 'Novo valor'
+                                        : 'Registrar pagamento'}{' '}
+                                    — {loan.name}
                                 </DialogTitle>
                             </DialogHeader>
                             <form onSubmit={handleSubmitPayment} className="space-y-4 pt-2">
-                                {/* Seletor: pagamento (abate) × novo valor (soma) */}
+                                {/* Seletor: 4 tipos de evento */}
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setPayKind('payment')}
-                                        className={`rounded-lg border p-2 text-sm font-medium transition-colors ${
-                                            !isDisbursement
-                                                ? 'border-primary bg-primary/10 text-primary'
-                                                : 'border-border text-muted-foreground hover:bg-muted/50'
-                                        }`}
-                                    >
-                                        {isBorrowed ? 'Paguei' : 'Recebi'}
-                                        <span className="block text-[10px] font-normal">abate o saldo</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setPayKind('disbursement')}
-                                        className={`rounded-lg border p-2 text-sm font-medium transition-colors ${
-                                            isDisbursement
-                                                ? 'border-amber-500 bg-amber-500/10 text-amber-600'
-                                                : 'border-border text-muted-foreground hover:bg-muted/50'
-                                        }`}
-                                    >
-                                        {isBorrowed ? 'Peguei mais' : 'Emprestei mais'}
-                                        <span className="block text-[10px] font-normal">soma ao saldo</span>
-                                    </button>
+                                    {([
+                                        { k: 'payment', title: isBorrowed ? 'Paguei' : 'Recebi', sub: 'abate o saldo', active: 'border-primary bg-primary/10 text-primary' },
+                                        { k: 'disbursement', title: isBorrowed ? 'Peguei mais' : 'Emprestei mais', sub: 'soma ao saldo', active: 'border-amber-500 bg-amber-500/10 text-amber-600' },
+                                        { k: 'adjust_balance', title: 'Ajustar saldo', sub: 'define o saldo', active: 'border-blue-500 bg-blue-500/10 text-blue-600' },
+                                        { k: 'adjust_interest', title: 'Ajustar juros', sub: 'define o juros', active: 'border-blue-500 bg-blue-500/10 text-blue-600' },
+                                    ] as const).map((opt) => (
+                                        <button
+                                            key={opt.k}
+                                            type="button"
+                                            onClick={() => setPayKind(opt.k)}
+                                            className={`rounded-lg border p-2 text-sm font-medium transition-colors ${
+                                                payKind === opt.k
+                                                    ? opt.active
+                                                    : 'border-border text-muted-foreground hover:bg-muted/50'
+                                            }`}
+                                        >
+                                            {opt.title}
+                                            <span className="block text-[10px] font-normal">{opt.sub}</span>
+                                        </button>
+                                    ))}
                                 </div>
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">
-                                        {isDisbursement
+                                        {isAdjBalance
+                                            ? 'Novo saldo devedor'
+                                            : isAdjInterest
+                                            ? 'Valor dos juros do período'
+                                            : isDisbursement
                                             ? (isBorrowed ? 'Valor que peguei a mais' : 'Valor que emprestei a mais')
                                             : (isBorrowed ? 'Valor pago' : 'Valor recebido')}
                                     </label>
@@ -215,12 +227,22 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                     </Popover>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    {isDisbursement
+                                    {isAdjBalance
+                                        ? 'Define o saldo devedor exato nesta data (ex.: um desconto/benefício). Este valor tem prioridade sobre a soma dos juros. Daqui pra frente os juros correm sobre ele.'
+                                        : isAdjInterest
+                                        ? 'Substitui os juros calculados do período por este valor. Útil quando o combinado foi um juros diferente do automático.'
+                                        : isDisbursement
                                         ? 'Os juros correm até esta data sobre o saldo atual, e então o novo valor é somado. A partir daí os juros passam a correr sobre o saldo maior.'
                                         : 'Pode registrar quantos pagamentos quiser no mês. O saldo e os juros são recalculados automaticamente pela data de cada um.'}
                                 </p>
                                 <Button type="submit" className="w-full">
-                                    {isDisbursement ? 'Salvar novo valor' : 'Salvar pagamento'}
+                                    {isAdjBalance
+                                        ? 'Salvar saldo'
+                                        : isAdjInterest
+                                        ? 'Salvar juros'
+                                        : isDisbursement
+                                        ? 'Salvar novo valor'
+                                        : 'Salvar pagamento'}
                                 </Button>
                             </form>
                         </DialogContent>
@@ -356,13 +378,22 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                                 </tr>
                                                 {ledger.rows.map((row, i) => {
                                                     const isAporte = row.kind === 'disbursement';
+                                                    const isAjSaldo = row.kind === 'adjust_balance';
+                                                    const isAjJuros = row.kind === 'adjust_interest';
+                                                    const badge = isAporte
+                                                        ? { txt: 'novo valor', cls: 'bg-amber-500/15 text-amber-600' }
+                                                        : isAjSaldo
+                                                        ? { txt: 'ajuste saldo', cls: 'bg-blue-500/15 text-blue-600' }
+                                                        : isAjJuros
+                                                        ? { txt: 'juros ajustado', cls: 'bg-blue-500/15 text-blue-600' }
+                                                        : null;
                                                     return (
                                                     <tr key={row.paymentId || i} className="hover:bg-muted/20">
                                                         <td className="px-3 py-2">
                                                             {format(row.date, 'dd/MM/yy', { locale: ptBR })}
-                                                            {isAporte && (
-                                                                <span className="ml-1 rounded bg-amber-500/15 px-1 text-[10px] font-medium text-amber-600">
-                                                                    novo valor
+                                                            {badge && (
+                                                                <span className={`ml-1 rounded px-1 text-[10px] font-medium ${badge.cls}`}>
+                                                                    {badge.txt}
                                                                 </span>
                                                             )}
                                                         </td>
@@ -371,13 +402,17 @@ export function LoanCard({ loan, onRegisterPayment, onDeletePayment, onDelete, o
                                                                 isAporte ? 'text-amber-600' : 'text-green-600'
                                                             }`}
                                                         >
-                                                            {isAporte ? `+${brl(row.amount)}` : brl(row.amount)}
+                                                            {isAjSaldo || isAjJuros
+                                                                ? '—'
+                                                                : isAporte
+                                                                ? `+${brl(row.amount)}`
+                                                                : brl(row.amount)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right text-destructive">
-                                                            {brl(row.interest)}
+                                                            {isAjSaldo ? '—' : brl(row.interest)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right">
-                                                            {isAporte ? '—' : brl(row.principal)}
+                                                            {isAporte || isAjSaldo || isAjJuros ? '—' : brl(row.principal)}
                                                         </td>
                                                         <td className="px-3 py-2 text-right font-medium">
                                                             {brl(row.balanceAfter)}

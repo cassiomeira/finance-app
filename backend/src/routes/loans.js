@@ -143,8 +143,13 @@ router.patch('/:id/integration', authMiddleware, async (req, res) => {
   }
 });
 
-// Normaliza o tipo de evento: 'disbursement' (novo valor pego, soma) ou 'payment' (abate)
-const normalizeKind = (k) => (k === 'disbursement' ? 'disbursement' : 'payment');
+// Tipos de evento no extrato do empréstimo:
+//  payment         → abate o saldo
+//  disbursement    → novo valor pego, soma ao saldo
+//  adjust_balance  → define o saldo devedor manualmente (tem prioridade)
+//  adjust_interest → define o valor dos juros do período manualmente
+const ALLOWED_KINDS = ['payment', 'disbursement', 'adjust_balance', 'adjust_interest'];
+const normalizeKind = (k) => (ALLOWED_KINDS.includes(k) ? k : 'payment');
 
 // POST /loans/:id/payments — Create payment for a loan
 router.post('/:id/payments', authMiddleware, async (req, res) => {

@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS loan_payments (
   date TIMESTAMPTZ NOT NULL,
   note TEXT,
   installment_number INTEGER,
-  kind TEXT NOT NULL DEFAULT 'payment' CHECK (kind IN ('payment', 'disbursement')),
+  kind TEXT NOT NULL DEFAULT 'payment' CHECK (kind IN ('payment', 'disbursement', 'adjust_balance', 'adjust_interest')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -204,8 +204,18 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='loan_payments' AND column_name='kind') THEN
-    ALTER TABLE loan_payments ADD COLUMN kind TEXT NOT NULL DEFAULT 'payment' CHECK (kind IN ('payment', 'disbursement'));
+    ALTER TABLE loan_payments ADD COLUMN kind TEXT NOT NULL DEFAULT 'payment';
   END IF;
+END $$;
+
+-- Garante que o CHECK de kind aceita os 4 tipos (payment, disbursement,
+-- adjust_balance, adjust_interest), atualizando bancos antigos.
+DO $$
+BEGIN
+  ALTER TABLE loan_payments DROP CONSTRAINT IF EXISTS loan_payments_kind_check;
+  ALTER TABLE loan_payments ADD CONSTRAINT loan_payments_kind_check
+    CHECK (kind IN ('payment', 'disbursement', 'adjust_balance', 'adjust_interest'));
+EXCEPTION WHEN others THEN NULL;
 END $$;
 
 -- Índices para performance

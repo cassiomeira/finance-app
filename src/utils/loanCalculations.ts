@@ -384,7 +384,7 @@ export interface LedgerRow {
     balanceBefore: number;   // saldo + juros, antes do evento
     balanceAfter: number;    // saldo após o evento
     note?: string;
-    kind: 'payment' | 'disbursement'; // abateu o saldo | somou ao saldo
+    kind: 'payment' | 'disbursement' | 'adjust_balance' | 'adjust_interest';
 }
 
 export interface LedgerResult {
@@ -428,14 +428,19 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
             note: (p as any).note as string | undefined,
             amount: Number(p.amount) || 0,
             date: new Date(p.date),
-            kind: ((p as any).kind === 'disbursement' ? 'disbursement' : 'payment') as 'payment' | 'disbursement',
+            kind: (['disbursement', 'adjust_balance', 'adjust_interest'].includes((p as any).kind)
+                ? (p as any).kind
+                : 'payment') as LedgerRow['kind'],
         }))
         .filter((p) => !isNaN(p.date.getTime()))
         .sort((a, b) => a.date.getTime() - b.date.getTime());
 
     for (const p of sorted) {
         // Juros correm até a data do evento, sobre o saldo atual, e são "congelados".
-        const interest = accrue(lastDate, p.date, balance);
+        // Nos ajustes, os juros automáticos podem ser substituídos/ignorados.
+        let interest = accrue(lastDate, p.date, balance);
+        if (p.kind === 'adjust_interest') interest = p.amount;   // juros definidos manualmente
+        if (p.kind === 'adjust_balance') interest = 0;           // saldo definido tem prioridade
         const balanceBefore = balance + interest;
         totalInterest += interest;
 
@@ -446,6 +451,14 @@ export const calculateLedger = (loan: Loan, asOf: Date = new Date()): LedgerResu
             balanceAfter = balanceBefore + p.amount;
             principalPart = p.amount;
             extraBorrowed += p.amount;
+        } else if (p.kind === 'adjust_balance') {
+            // Define o saldo devedor manualmente — ignora a soma dos juros do período.
+            balanceAfter = Math.max(0, p.amount);
+            principalPart = 0;
+        } else if (p.kind === 'adjust_interest') {
+            // Define os juros do período; nada é abatido do principal.
+            balanceAfter = balanceBefore;
+            principalPart = 0;
         } else {
             // Pagamento: abate o saldo (primeiro cobre os juros, o resto amortiza).
             balanceAfter = Math.max(0, balanceBefore - p.amount);
